@@ -149,6 +149,16 @@ describe("loadEntries / saveEntries", () => {
 		expect(loadEntries()).toEqual([draft({ time: DEFAULT_TIME })]);
 	});
 
+	it("keeps a recorded chime source across save/load", () => {
+		const recorded = draft({
+			chimeSource: ChimeSource.Recorded,
+			chimeName: "Eigene Aufnahme",
+			chimeDataUrl: "data:audio/webm;base64,REC",
+		});
+		saveEntries([recorded]);
+		expect(loadEntries()).toEqual([recorded]);
+	});
+
 	it("survives corrupt JSON", () => {
 		localStorage.setItem(StorageKey.Entries, "{not json");
 		expect(loadEntries()).toEqual([]);

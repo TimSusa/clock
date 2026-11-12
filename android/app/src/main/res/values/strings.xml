@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Clock</string>
+    <string name="title_activity_main">Clock</string>
+    <string name="package_name">de.timsusa.clock</string>
+    <string name="custom_url_scheme">de.timsusa.clock</string>
+</resources>

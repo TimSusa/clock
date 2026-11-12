@@ -79,6 +79,7 @@ export enum ChimeSource {
 	Default = "default",
 	Custom = "custom",
 	YouTube = "youtube",
+	Recorded = "recorded",
 }
 
 export enum CalendarProvider {

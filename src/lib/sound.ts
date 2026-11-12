@@ -21,7 +21,8 @@ export function resolveChimeUrl(entry: ChimeFields): string {
 		const id = parseYouTubeUrl(entry.chimeDataUrl);
 		return id !== null ? (youtubeEmbedUrl(id) ?? DEFAULT_CHIME_URL) : DEFAULT_CHIME_URL;
 	}
-	return entry.chimeSource === ChimeSource.Custom && entry.chimeDataUrl.length > 0
+	return (entry.chimeSource === ChimeSource.Custom || entry.chimeSource === ChimeSource.Recorded) &&
+		entry.chimeDataUrl.length > 0
 		? entry.chimeDataUrl
 		: DEFAULT_CHIME_URL;
 }

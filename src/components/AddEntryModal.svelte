@@ -18,6 +18,12 @@ import {
 	CHIME_DEFAULT_LABEL,
 	CHIME_LABEL,
 	CHIME_PREVIEW_LABEL,
+	CHIME_RECORD_DENIED,
+	CHIME_RECORD_LABEL,
+	CHIME_RECORD_NAME,
+	CHIME_RECORD_START,
+	CHIME_RECORD_STOP,
+	CHIME_RECORD_UNAVAILABLE,
 	CHIME_TOO_LARGE,
 	CHIME_WRONG_TYPE,
 	CHIME_YOUTUBE_INVALID,
@@ -33,6 +39,8 @@ import {
 	SAVE_ENTRY_SUBMIT,
 	VALIDATION_MESSAGE,
 } from "../lib/labels";
+import type { RecorderLike } from "../lib/recording";
+import { blobToDataUrl, isAcceptableRecording, recordChime } from "../lib/recording";
 import { createPreviewController, isAcceptableAudioFile, resolveChimeUrl } from "../lib/sound";
 import { parseIsoDate } from "../lib/time";
 import type { CalendarEntry, MonthGrid } from "../lib/types";
@@ -83,11 +91,25 @@ let youtubeInput: string = $state(
 	initial?.chimeSource === ChimeSource.YouTube ? (initial?.chimeDataUrl ?? "") : "",
 );
 let youtubePreviewId: string | null = $state(null);
+let isRecording = $state(false);
+let pendingStop = false;
+let activeRecorder: RecorderLike | null = null;
+let activeStream: MediaStream | null = null;
 
 const preview = createPreviewController();
 
+function releaseRecorder(): void {
+	if (activeRecorder && activeRecorder.state === "recording") activeRecorder.stop();
+	activeRecorder = null;
+	activeStream?.getTracks().forEach((track) => track.stop());
+	activeStream = null;
+	isRecording = false;
+	pendingStop = false;
+}
+
 onDestroy(() => {
 	preview.stop();
+	releaseRecorder();
 });
 
 const date: string = $derived(dateOverride ?? initialIso);
@@ -119,6 +141,7 @@ function handleSubmit(event: SubmitEvent): void {
 	}
 	preview.stop();
 	youtubePreviewId = null;
+	releaseRecorder();
 	onSave(initial ? { ...draft, id: initial.id } : draft);
 	onClose();
 }
@@ -126,6 +149,7 @@ function handleSubmit(event: SubmitEvent): void {
 function closeModal(): void {
 	preview.stop();
 	youtubePreviewId = null;
+	releaseRecorder();
 	onClose();
 }
 
@@ -136,6 +160,64 @@ function selectDefaultChime(): void {
 	chimeName = DEFAULT_CHIME_NAME;
 	chimeDataUrl = "";
 	chimeError = "";
+}
+
+async function startRecording(): Promise<void> {
+	preview.stop();
+	youtubePreviewId = null;
+	chimeError = "";
+
+	if (
+		typeof navigator === "undefined" ||
+		!navigator.mediaDevices?.getUserMedia ||
+		typeof MediaRecorder === "undefined"
+	) {
+		chimeError = CHIME_RECORD_UNAVAILABLE;
+		return;
+	}
+
+	isRecording = true;
+	let stream: MediaStream;
+	try {
+		stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+	} catch {
+		chimeError = CHIME_RECORD_DENIED;
+		releaseRecorder();
+		return;
+	}
+
+	activeStream = stream;
+	const recorder = new MediaRecorder(stream) as unknown as RecorderLike;
+	activeRecorder = recorder;
+
+	try {
+		const { dataUrl } = await recordChime({
+			makeRecorder: () => recorder,
+			toDataUrl: (blob) => blobToDataUrl(blob),
+			...(pendingStop ? { stopImmediately: true } : {}),
+		});
+		const estimatedBytes = Math.ceil((dataUrl.length * 3) / 4);
+		if (!isAcceptableRecording({ type: "audio/webm", size: estimatedBytes })) {
+			chimeError = CHIME_TOO_LARGE;
+		} else {
+			chimeSource = ChimeSource.Recorded;
+			chimeName = CHIME_RECORD_NAME;
+			chimeDataUrl = dataUrl;
+		}
+	} catch {
+		chimeError = CHIME_RECORD_UNAVAILABLE;
+	} finally {
+		releaseRecorder();
+	}
+}
+
+function toggleRecording(): void {
+	if (isRecording) {
+		if (activeRecorder) activeRecorder.stop();
+		else pendingStop = true;
+		return;
+	}
+	void startRecording();
 }
 
 async function handleChimeFile(event: Event): Promise<void> {
@@ -373,6 +455,20 @@ function pickDate(iso: string): void {
 							: 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'}"
 					>
 						{CHIME_YOUTUBE_LABEL}
+					</button>
+					<button
+						type="button"
+						data-testid="chime-record"
+						aria-label={CHIME_RECORD_LABEL}
+						aria-pressed={isRecording || chimeSource === ChimeSource.Recorded}
+						onclick={toggleRecording}
+						class="h-9 rounded-lg px-3 text-xs font-medium transition-colors {isRecording
+							? 'bg-rose-600 text-white'
+							: chimeSource === ChimeSource.Recorded
+								? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+								: 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'}"
+					>
+						{isRecording ? CHIME_RECORD_STOP : CHIME_RECORD_START}
 					</button>
 					<button
 						type="button"

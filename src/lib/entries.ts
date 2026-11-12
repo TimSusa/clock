@@ -39,7 +39,7 @@ function normalizeEntry(value: unknown): CalendarEntry | null {
 		return null;
 	}
 	const custom =
-		e.chimeSource === ChimeSource.Custom &&
+		(e.chimeSource === ChimeSource.Custom || e.chimeSource === ChimeSource.Recorded) &&
 		typeof e.chimeDataUrl === "string" &&
 		e.chimeDataUrl.length > 0;
 	const youtube =
@@ -49,7 +49,11 @@ function normalizeEntry(value: unknown): CalendarEntry | null {
 	const chime =
 		custom || youtube
 			? {
-					chimeSource: youtube ? ChimeSource.YouTube : ChimeSource.Custom,
+					chimeSource: youtube
+						? ChimeSource.YouTube
+						: e.chimeSource === ChimeSource.Recorded
+							? ChimeSource.Recorded
+							: ChimeSource.Custom,
 					chimeName:
 						typeof e.chimeName === "string" && e.chimeName.length > 0
 							? e.chimeName

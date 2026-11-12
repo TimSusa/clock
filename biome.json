@@ -3,7 +3,19 @@
 	"vcs": { "enabled": false, "clientKind": "git", "useIgnoreFile": true },
 	"files": {
 		"ignoreUnknown": true,
-		"includes": ["**", "!**/node_modules", "!**/dist", "!**/.svelte-kit", "!**/*.css"]
+		"includes": [
+			"**",
+			"!**/node_modules",
+			"!**/dist",
+			"!**/.svelte-kit",
+			"!**/*.css",
+			"!**/ios/App/App/public",
+			"!**/ios/App/App/capacitor.config.json",
+			"!**/android/app/src/main/assets/capacitor.config.json",
+			"!**/android/app/src/main/assets/public",
+			"!**/android/**/build",
+			"!**/android/capacitor-cordova-android-plugins"
+		]
 	},
 	"formatter": { "enabled": true, "indentStyle": "tab", "lineWidth": 100 },
 	"linter": { "enabled": true, "rules": { "preset": "none" } },

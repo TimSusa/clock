@@ -2,11 +2,13 @@
 import { onMount } from "svelte";
 import AddEntryModal from "./components/AddEntryModal.svelte";
 import EntryList from "./components/EntryList.svelte";
-import { fireAlarms, firedKeyForDay } from "./lib/alarms-run";
+import { claimAndFire, firedKeyForDay } from "./lib/alarms-run";
 import { TICK_INTERVAL_MS } from "./lib/constants";
 import { addEntry, loadEntries, removeEntry, saveEntries, updateEntry } from "./lib/entries";
 import { Theme } from "./lib/enums";
 import { THEME_LABEL } from "./lib/labels";
+import type { NotificationPort } from "./lib/notification-port";
+import { createNotificationPort } from "./lib/notification-port";
 import { loadPreferences, savePreferences } from "./lib/preferences";
 import { browserPlayer } from "./lib/sound";
 import { isoDateKey } from "./lib/time";
@@ -23,6 +25,7 @@ let editing = $state<CalendarEntry | undefined>(undefined);
 
 let firedIds: string[] = [];
 let firedDay = firedKeyForDay(initial);
+let notificationPort = $state<NotificationPort | null>(null);
 
 $effect(() => {
 	document.documentElement.classList.toggle("dark", prefs.theme === Theme.Dark);
@@ -36,7 +39,20 @@ $effect(() => {
 	saveEntries(entries);
 });
 
+// Re-plan native alarms on every change (add/edit/delete/import). This is what
+// makes the alarm fire even when the app is closed - the OS owns the schedule.
+$effect(() => {
+	const current = entries;
+	const port = notificationPort;
+	if (port) void port.reschedule(current, new Date());
+});
+
 onMount(() => {
+	void createNotificationPort().then(async (port) => {
+		await port.requestPermission();
+		notificationPort = port;
+	});
+
 	const timer = window.setInterval(() => {
 		const next = new Date();
 		now = next;
@@ -45,9 +61,7 @@ onMount(() => {
 			firedDay = day;
 			firedIds = [];
 		}
-		void fireAlarms(entries, next, firedIds, browserPlayer).then((ids) => {
-			firedIds = [...ids];
-		});
+		void claimAndFire(entries, next, firedIds, browserPlayer);
 	}, TICK_INTERVAL_MS);
 	return () => window.clearInterval(timer);
 });

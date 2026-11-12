@@ -22,6 +22,17 @@ describe("resolveChimeUrl", () => {
 		).toBe("data:audio/mpeg;base64,AAA");
 	});
 
+	it("uses the stored data url for a recorded clip", () => {
+		expect(
+			resolveChimeUrl(
+				entry({
+					chimeSource: ChimeSource.Recorded,
+					chimeDataUrl: "data:audio/webm;base64,REC",
+				}),
+			),
+		).toBe("data:audio/webm;base64,REC");
+	});
+
 	it("falls back to the default when a custom url is empty", () => {
 		expect(resolveChimeUrl(entry({ chimeSource: ChimeSource.Custom, chimeDataUrl: "" }))).toBe(
 			DEFAULT_CHIME_URL,

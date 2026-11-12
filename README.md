@@ -20,7 +20,7 @@ Es gibt **keine Tabs**. Die Home-View zeigt eine einzige Liste „Alle Eintraege
 
 ## Klingelton pro Eintrag
 
-Im Anlege-/Edit-Dialog: **Standard** (bundled `public/chime-default.mp3`), **eigene MP3 vom Geraet** (max. 1,5 MB, als Data-URL im Eintrag) oder **YouTube-URL** (validiert, Vorschau als `youtube-nocookie.com` Embed). „Anhoeren" ist ein Toggle: erneuter Klick, Schliessen, Speichern und Unmount stoppen die Wiedergabe (`createPreviewController` in `sound.ts`).
+Im Anlege-/Edit-Dialog: **Standard** (bundled `public/chime-default.mp3`), **eigene MP3 vom Geraet** (max. 1,5 MB, als Data-URL im Eintrag), **YouTube-URL** (validiert, Vorschau als `youtube-nocookie.com` Embed) oder **Mikrofon-Aufnahme** (`MediaRecorder`, `ChimeSource.Recorded`, lokal als Data-URL gespeichert, `NSMicrophoneUsageDescription` auf iOS). „Anhoeren" ist ein Toggle: erneuter Klick, Schliessen, Speichern und Unmount stoppen die Wiedergabe (`createPreviewController` in `sound.ts`).
 
 Einen **globalen** Klingelton-Schalter gibt es bewusst nicht — der Ton gehoert zum einzelnen Eintrag.
 
@@ -43,19 +43,55 @@ Die relevante Erkenntnis ist **nicht** die Library, sondern das Muster: eine App
 
 Fuer Clock bedeutet das: `CalendarPort` mit `requestPermission / listCalendars / fetchEvents / saveEvent / deleteEvent`. Die heutige Web-Implementierung (`ical.ts` + `providers.ts`) ist ein Port; die spaetere Native-Implementierung ein zweiter hinter demselben Interface. `fetchEvents()` macht den Startup-Import dann wirklich „alle Kalender", und die native `eventId` wird als `externalId` am Eintrag gespeichert, damit Update/Delete exakt das richtige Event treffen. Bis dahin bleiben Cloud-Adapter mit gemocktem `fetch` getestet; **ein echter Live-Sync gegen Google/Outlook ist ohne OAuth-Tokens nicht verifiziert**.
 
-## Mobile: React Native vs. Tauri
+## Mobile: Capacitor (iOS + Android)
 
-| | React Native | Tauri 2 |
-| --- | --- | --- |
-| UI | echte native Komponenten (Fabric/JSI) | WebView (WKWebView / Android System WebView) |
-| Mobile-Reife | ausgereift, jahrelang in Produktion | v2-mobil noch jung/beta-artig, Desktop stabil |
-| Unsere Svelte-App | **muesste neu geschrieben werden** | **bleibt unverändert**, nur eine Huelle drum |
-| Native Kalender/Notifications | `react-native-calendar-events`, `@notifee/...` direkt | Plugins (Rust + Swift/Kotlin) noetig |
-| Bundle | groesser | sehr klein (OS-Webview) |
+**Entscheidung: Capacitor.** Die App ist eine Svelte-5-Web-App; Capacitor packt genau diesen Build (`dist/`) in eine native Huelle — **kein Rewrite**, der gesamte TS-Code und alle Tests bleiben unveraendert.
 
-**Empfehlung fuer dieses Projekt: Tauri 2.** Der gesamte bestehende Code (Svelte 5, striktes TS, 171 Tests) bleibt zu 100 % erhalten — RN wuerde einen kompletten Rewrite bedeuten. Tauri liefert zudem Desktop (macOS/Windows/Linux) gratis mit. Der Preis: mobile Reife und dass native Features (lokale Notifications, Geraetekalender ueber den `CalendarPort`) als Plugins in Rust/Swift/Kotlin gebaut werden muessen. Wer mobile **native UI** und maximale Plattform-Stabilitaet priorisiert, nimmt RN — aber dann ist es ein neues Projekt, nicht dieses Repo.
+| | React Native | Tauri 2 | Capacitor |
+| --- | --- | --- | --- |
+| UI | echte native Komponenten | WebView | WebView (WKWebView) |
+| Mobile-Reife | ausgereift | v2-mobil noch jung | ausgereift |
+| unsere App | **Komplett-Rewrite noetig** | bleibt, aber Rust/Plugins | **bleibt zu 100 %** |
+| Native Notifications | ueber Libraries | Rust/Swift-Plugin | `@capacitor/local-notifications` |
 
-Alternativ, falls nur iOS/Android ohne Desktop gebraucht wird: **Capacitor** ist der kleinste Schritt (dieselbe Web-App + `@capacitor/local-notifications` + `@capacitor/calendar`-aehnliche Plugins), mit ausgereifterer Mobile-Story als Tauri.
+RN scheidet aus (waere ein neues Projekt), Tauri bleibt eine Option fuer Desktop, ist aber fuer iOS/Android noch nicht die stabilste Wahl. Xcode wird fuer iOS-Build/Signing weiter benoetigt.
+
+### Build- & Deploy-Scripts
+
+| Script | Was es tut |
+| --- | --- |
+| `npm run cap:sync` | `build` + `cap sync` (beide Plattformen) |
+| `npm run build:ios` | `scripts/build-ios.sh` — Simulator-Build (verifiziert). Mit `DEVICE=1 DEVELOPMENT_TEAM=<TEAM>` Device-Build |
+| `npm run build:android` | `scripts/build-android.sh` — Gradle `assembleDebug` → `app-debug.apk` |
+| `npm run deploy:device` | `scripts/deploy-device.sh` — spielt den Build per USB auf angeschlossene Geraete (`PLATFORM=ios|android|auto`) |
+
+iOS-Deploy nutzt `xcrun devicectl`, Android-Deploy `adb install -r`. Beide **pruefen vorher**, ob wirklich ein Geraet verbunden ist, und brechen mit einer klaren Meldung ab statt Erfolg zu behaupten.
+
+> **Ehrliche Voraussetzungen:** Xcode 27.1 + iOS-Simulator sind vorhanden und `build:ios` laeuft durch. Fuer **Android** fehlen auf diesem Rechner das Android SDK, `adb` und `ANDROID_HOME` (nur Java 21 ist da) — `build:android` bricht deshalb bewusst mit Exit 1 ab. **Kein physisches Geraet** ist per USB angeschlossen (`xcrun devicectl` listet nur Simulatoren), daher kann `deploy:device` aktuell nichts installieren. Sobald SDK bzw. Geraet vorhanden sind, laufen die Scripte ohne weitere Aenderung.
+
+```bash
+# iOS auf angeschlossenes iPhone:
+DEVICE=1 DEVELOPMENT_TEAM=ABCDE12345 npm run build:ios
+PLATFORM=ios npm run deploy:device
+
+# Android (nach SDK-Installation):
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+npm run build:android
+PLATFORM=android npm run deploy:device
+```
+
+Fuer ein **physisches Geraet** braucht es zusaetzlich ein Apple Developer Team (`DEVELOPMENT_TEAM`) und ein angeschlossenes, vertrautes iPhone — automatische Installation auf Hardware ist ohne Signing nicht moeglich.
+
+### Wecker bei geschlossener App (der eigentliche Kern)
+
+Der Browser-Ticker klingelt nur bei offener App. Deshalb:
+
+- `notification-plan.ts` berechnet **rein** die zukuenftigen Eintraege (`id`, `title`, `body`, `at`).
+- `notification-port.ts` ist der `NotificationPort`: `requestPermission()` + `reschedule()`. Auf dem Web ein No-Op (dort uebernimmt der Ticker), nativ `@capacitor/local-notifications` — vorher **cancel aller pending**, dann neu planen. So hinterlaesst Editieren/Loeschen keine veralteten Alarme.
+- `App.svelte` stoesst `reschedule` per `$effect` bei **jeder** Aenderung von `entries` an.
+- `claimAndFire()` beansprucht due IDs **synchron vor** dem `await playChime`, damit der 1-s-Ticker bei langsamem Audio nicht mehrfach klingelt.
+
+`Info.plist` enthaelt `NSMicrophoneUsageDescription`, `NSCalendarsUsageDescription` und `UIBackgroundModes = audio`.
 
 ## Architektur
 

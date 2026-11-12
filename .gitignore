@@ -16,6 +16,26 @@ coverage/
 *.wav
 *.ogg
 
+# iOS / Capacitor generated artifacts
+ios/App/App/public/
+ios/App/DerivedData/
+ios/App/CapApp-SPM/.build/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+ios/capacitor-cordova-ios-plugins/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad
+
+# Android / Gradle generated artifacts
+android/app/build/
+android/build/
+android/.gradle/
+android/capacitor-cordova-android-plugins/
+android/local.properties
+android/app/src/main/assets/public/
+*.apk
+*.aab
+
 # OS / editor
 .DS_Store
 *.swp

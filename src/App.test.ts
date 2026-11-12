@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/svelte";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.svelte";
 import { CalendarProvider, EntryCategory, StorageKey, Theme } from "./lib/enums";
@@ -12,9 +12,32 @@ class FakeAudio {
 	pause = vi.fn();
 }
 
+/** Minimal MediaRecorder stand-in: fires one chunk and resolves on stop(). */
+class FakeMediaRecorder {
+	state: RecordingState = "inactive";
+	ondataavailable: ((e: { data: BlobPart }) => void) | null = null;
+	onstop: (() => void) | null = null;
+	start(): void {
+		this.state = "recording";
+	}
+	stop(): void {
+		this.state = "inactive";
+		this.ondataavailable?.({ data: new Blob(["rec"], { type: "audio/webm" }) });
+		this.onstop?.();
+	}
+}
+
+const fakeTrack = { stop: vi.fn() };
+const fakeStream = { getTracks: () => [fakeTrack] } as unknown as MediaStream;
+
 beforeEach(() => {
 	localStorage.clear();
 	vi.stubGlobal("Audio", FakeAudio);
+	vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+	vi.stubGlobal("navigator", {
+		...navigator,
+		mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(fakeStream) },
+	});
 	vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
 	vi.setSystemTime(FIXED);
 	document.documentElement.classList.remove("dark");
@@ -164,6 +187,40 @@ describe("App - home view", () => {
 			time: "16:00",
 		});
 		expect(screen.getByTestId("entry-time")).toHaveTextContent("16:00");
+	});
+
+	it("records a chime with the microphone and stores it on the entry", async () => {
+		// Microphone flow is promise-driven; real timers let the async chain settle.
+		vi.useRealTimers();
+		render(App);
+		await fireEvent.click(screen.getByTestId("add-entry-toggle"));
+		await fireEvent.click(screen.getByTestId("chime-record"));
+		expect(screen.getByTestId("chime-record")).toHaveAttribute("aria-pressed", "true");
+		await fireEvent.click(screen.getByTestId("chime-record"));
+
+		await waitFor(() => {
+			expect(screen.getByTestId("chime-name")).toHaveTextContent("Eigene Aufnahme");
+		});
+		await fireEvent.input(screen.getByTestId("add-entry-title"), {
+			target: { value: "Weckruf" },
+		});
+		await fireEvent.click(screen.getByTestId("add-entry-submit"));
+
+		const stored = JSON.parse(localStorage.getItem(StorageKey.Entries) ?? "[]") as Array<{
+			chimeSource: string;
+			chimeDataUrl: string;
+		}>;
+		expect(stored[0]?.chimeSource).toBe("recorded");
+		expect(stored[0]?.chimeDataUrl).toMatch(/^data:/);
+		expect(fakeTrack.stop).toHaveBeenCalled();
+	});
+
+	it("reports clearly when the microphone is unavailable", async () => {
+		vi.stubGlobal("MediaRecorder", undefined);
+		render(App);
+		await fireEvent.click(screen.getByTestId("add-entry-toggle"));
+		await fireEvent.click(screen.getByTestId("chime-record"));
+		expect(screen.getByTestId("chime-error")).toHaveTextContent("Mikrofon nicht verfuegbar");
 	});
 
 	it("has no global chime toggle - the chime belongs to each entry", () => {
