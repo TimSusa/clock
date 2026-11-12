@@ -66,8 +66,12 @@ deploy_ios() {
   for udid in $devices; do
     echo "▶ Installiere auf $udid"
     xcrun devicectl device install app --device "$udid" "$app"
+    if [ "${LAUNCH:-0}" = "1" ]; then
+      echo "▶ Starte und pruefe Readiness auf $udid"
+      xcrun devicectl device process launch --device "$udid" de.timsusa.clock
+    fi
   done
-  echo "✔ iOS-Installation abgeschlossen."
+  echo "✔ iOS-Installation abgeschlossen. (LAUNCH=1 startet die App zusaetzlich.)"
 }
 
 case "$PLATFORM" in

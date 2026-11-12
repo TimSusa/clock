@@ -65,7 +65,7 @@ RN scheidet aus (waere ein neues Projekt), Tauri bleibt eine Option fuer Desktop
 | `npm run build:android` | `scripts/build-android.sh` — Gradle `assembleDebug` → `app-debug.apk` |
 | `npm run deploy:device` | `scripts/deploy-device.sh` — spielt den Build per USB auf angeschlossene Geraete (`PLATFORM=ios|android|auto`) |
 
-iOS-Deploy nutzt `xcrun devicectl`, Android-Deploy `adb install -r`. Beide **pruefen vorher**, ob wirklich ein Geraet verbunden ist, und brechen mit einer klaren Meldung ab statt Erfolg zu behaupten.
+iOS-Deploy nutzt `xcrun devicectl`, Android-Deploy `adb install -r`. Beide **pruefen vorher**, ob wirklich ein Geraet verbunden ist, und brechen mit einer klaren Meldung ab statt Erfolg zu behaupten. `LAUNCH=1` startet die iOS-App nach dem Install zusaetzlich (Readiness-Check).
 
 > **Ehrliche Voraussetzungen:** Xcode 27.1 + iOS-Simulator sind vorhanden und `build:ios` laeuft durch. Fuer **Android** fehlen auf diesem Rechner das Android SDK, `adb` und `ANDROID_HOME` (nur Java 21 ist da) — `build:android` bricht deshalb bewusst mit Exit 1 ab. **Kein physisches Geraet** ist per USB angeschlossen (`xcrun devicectl` listet nur Simulatoren), daher kann `deploy:device` aktuell nichts installieren. Sobald SDK bzw. Geraet vorhanden sind, laufen die Scripte ohne weitere Aenderung.
 
