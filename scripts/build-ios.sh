@@ -17,7 +17,9 @@ if [ "${DEVICE:-0}" = "1" ]; then
     -destination 'generic/platform=iOS' \
     -derivedDataPath "$DERIVED/device" \
     DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-    CODE_SIGN_STYLE=Automatic build
+    CODE_SIGN_STYLE=Automatic \
+    -allowProvisioningUpdates \
+    -allowProvisioningDeviceRegistration build
   echo "✔ Device app: $DERIVED/device/Build/Products/Debug-iphoneos/App.app"
 else
   echo "▶ iOS Simulator build ($SIM)"

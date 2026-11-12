@@ -67,7 +67,11 @@ RN scheidet aus (waere ein neues Projekt), Tauri bleibt eine Option fuer Desktop
 
 iOS-Deploy nutzt `xcrun devicectl`, Android-Deploy `adb install -r`. Beide **pruefen vorher**, ob wirklich ein Geraet verbunden ist, und brechen mit einer klaren Meldung ab statt Erfolg zu behaupten. `LAUNCH=1` startet die iOS-App nach dem Install zusaetzlich (Readiness-Check).
 
-> **Ehrliche Voraussetzungen:** Xcode 27.1 + iOS-Simulator sind vorhanden und `build:ios` laeuft durch. Fuer **Android** fehlen auf diesem Rechner das Android SDK, `adb` und `ANDROID_HOME` (nur Java 21 ist da) — `build:android` bricht deshalb bewusst mit Exit 1 ab. **Kein physisches Geraet** ist per USB angeschlossen (`xcrun devicectl` listet nur Simulatoren), daher kann `deploy:device` aktuell nichts installieren. Sobald SDK bzw. Geraet vorhanden sind, laufen die Scripte ohne weitere Aenderung.
+> **Ehrliche Voraussetzungen:** Xcode 27.1 + iOS-Simulator sind vorhanden und `build:ios` laeuft durch. Fuer **Android** fehlen auf diesem Rechner das Android SDK, `adb` und `ANDROID_HOME` (nur Java 21 ist da) — `build:android` bricht deshalb bewusst mit Exit 1 ab.
+>
+> **Physisches iPhone (USB):** Ein iPhone 14 Pro (iOS 27.2.1) ist per USB verbunden, gepaart und **Developer Mode = Enabled** — der USB-Transport funktioniert (`devicectl` uebertraegt die App bis `installd`). Fuer die Installation braucht iOS aber zwingend eine **gueltige Signatur**. Dafuer muss in **Xcode → Settings → Accounts** einmalig die aktive Apple-ID (`timmsusa@googlemail.com`) angemeldet sein; Xcode erzeugt dann automatisch Zertifikat + Provisioning Profile fuer das Personal Team (`GBSGAAACX7`). Ohne angemeldeten Account meldet `xcodebuild` korrekt `No Accounts: Add a new account in Accounts settings` und `deploy:device` kann kein signiertes `.app` finden. Alte/abgelaufene Zertifikate und Account-Reste wurden aus Keychain und Xcode-Prefs entfernt.
+>
+> Sobald Xcode angemeldet ist, laufen `DEVICE=1 DEVELOPMENT_TEAM=GBSGAAACX7 npm run build:ios` und `PLATFORM=ios npm run deploy:device` ohne weitere Aenderung. `-allowProvisioningDeviceRegistration` registriert das Geraet dabei automatisch.
 
 ```bash
 # iOS auf angeschlossenes iPhone:
