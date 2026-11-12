@@ -17,7 +17,8 @@
 		"cap:sync": "npm run build && cap sync",
 		"build:ios": "bash scripts/build-ios.sh",
 		"build:android": "bash scripts/build-android.sh",
-		"deploy:device": "bash scripts/deploy-device.sh"
+		"deploy:device": "bash scripts/deploy-device.sh",
+		"go-live": "bash scripts/go-live.sh"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.7",

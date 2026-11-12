@@ -120,6 +120,7 @@ A browser ticker only runs while the page is open. Therefore:
 | `npm run build:ios` | `scripts/build-ios.sh` — verified simulator build; `DEVICE=1 DEVELOPMENT_TEAM=<TEAM>` for hardware |
 | `npm run build:android` | `scripts/build-android.sh` — Gradle `assembleDebug` → `app-debug.apk` |
 | `npm run deploy:device` | `scripts/deploy-device.sh` — installs over USB (`PLATFORM=ios|android|auto`, `LAUNCH=1` adds a readiness check) |
+| `npm run go-live` | `scripts/go-live.sh` — one-shot: verify device → signed build → install → launch (needs `DEVELOPMENT_TEAM`) |
 
 iOS uses `xcrun devicectl`, Android uses `adb install -r`. Both **verify a device is actually connected** and fail with a clear message instead of claiming success.
 
