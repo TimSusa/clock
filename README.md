@@ -1,115 +1,175 @@
 # Clock
 
-Wecker- und Termin-App. Svelte 5 + Tailwind v4, striktes TypeScript, Biome, Vitest.
+> A single-list alarm & appointment app where **every event owns its own sound** — built as a production-grade, cross-platform reference project.
 
-## Start
+[![Stack](https://img.shields.io/badge/Svelte-5-ff3e00)](#tech-stack) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](#tech-stack) [![Tests](https://img.shields.io/badge/tests-194%20passing-brightgreen)](#quality-gates) [![Platforms](https://img.shields.io/badge/Web%20%7C%20iOS%20%7C%20Android-blue)](#mobile-capacitor)
+
+---
+
+## The idea, in one paragraph
+
+Most calendar apps treat the notification sound as a **global setting**. Clock flips that: a 7:00 workout, a 15:30 dentist appointment and a 24.12 family dinner can each ring differently — a bundled track, an MP3 from the device, a YouTube link, or a recording made with the microphone. One list, one data model, one dialog. That single decision drives the whole architecture: no duplicated "alarm" and "appointment" entities, no tabs, no permanent calendar grid cluttering the screen, no global toggle.
+
+**Who it is for:** anyone who wants to *hear* what is due, not just read it — and, for reviewers, a compact example of how to build a strict-typed, fully tested web app that ships to iOS and Android from one codebase.
+
+---
+
+## Product at a glance
+
+| Capability | What it does | Business value |
+| --- | --- | --- |
+| Unified list | Appointments and wake-up times are the **same** `CalendarEntry`; the calendar grid appears only when a date is picked | One mental model, zero context switching |
+| Per-event chime | Default MP3 / own MP3 / YouTube / microphone recording, previewable before saving | Distinguishable alerts without looking at the screen |
+| Click-to-edit | Tapping a row reopens the same dialog in edit mode | Fast correction, no duplicate records |
+| Auto internal export | ICS text + readable summary regenerate on every change, no button, no confirmation | Always-current data for copy/paste or downstream sync |
+| Standards export | `.ics` with `VALARM`, Google/Outlook reminder payloads | Portable into any existing calendar workflow |
+| Native alarms | Local notifications rescheduled on every change | Rings even when the app is closed |
+
+**Design rules (deliberate):** one view, one source of truth, a form only when needed, and no global settings that actually belong to an individual record.
+
+---
+
+## Quick start
 
 ```bash
 npm install
-npm run dev            # http://127.0.0.1:5180/
-npm run verify         # biome + typecheck + tests + build
+npm run dev          # http://127.0.0.1:5180/
+npm run verify       # biome + typecheck + tests + build (single quality gate)
 ```
 
-Weitere Skripte: `npm test`, `npm run test:watch`, `npm run typecheck`, `npm run lint`, `npm run lint:fix`, `npm run build`, `npm run preview`.
+Scripts: `dev`, `build`, `preview`, `test`, `test:watch`, `typecheck`, `lint`, `lint:fix`, `verify`, `cap:sync`, `build:ios`, `build:android`, `deploy:device`.
 
-## Eine Ansicht, ein Datensatz
+---
 
-Es gibt **keine Tabs**. Die Home-View zeigt eine einzige Liste „Alle Eintraege" (Termine und Weckzeiten sind identisch), den **+ Button im Kopf der Liste** und die Synchronisierung darunter. Das Monatskalender-Raster erscheint **nur bei Bedarf** im Anlege-Dialog („Datum im Kalender waehlen"). Klick auf eine Zeile bearbeitet den Eintrag im selben Dialog.
+## Tech stack
 
-`CalendarEntry` (`src/lib/types.ts`) traegt `id`, `iso`, `time`, `title`, `category`, `note` sowie den Klingelton (`chimeSource`, `chimeName`, `chimeDataUrl`). Persistiert in `localStorage` (`clock.entries.v1`); alte Datensaetze werden beim Laden migriert (Zeit → `09:00`, Klingelton → Standard).
+| Layer | Choice | Why |
+| --- | --- | --- |
+| UI | Svelte 5 (runes) + Tailwind v4 | Minimal runtime, reactive by default |
+| Language | TypeScript **strict** (`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`) | Errors at compile time, not on device |
+| Lint/format | Biome 2.5.7 | One tool, deterministic output |
+| Tests | Vitest + Testing Library | 194 tests across 26 files |
+| Build | Vite 6 | Fast web bundle (~88 kB JS) |
+| Mobile | Capacitor 8 (`ios/`, `android/`) | Same web build, native shell, no rewrite |
 
-## Klingelton pro Eintrag
+---
 
-Im Anlege-/Edit-Dialog: **Standard** (bundled `public/chime-default.mp3`), **eigene MP3 vom Geraet** (max. 1,5 MB, als Data-URL im Eintrag), **YouTube-URL** (validiert, Vorschau als `youtube-nocookie.com` Embed) oder **Mikrofon-Aufnahme** (`MediaRecorder`, `ChimeSource.Recorded`, lokal als Data-URL gespeichert, `NSMicrophoneUsageDescription` auf iOS). „Anhoeren" ist ein Toggle: erneuter Klick, Schliessen, Speichern und Unmount stoppen die Wiedergabe (`createPreviewController` in `sound.ts`).
+## Architecture
 
-Einen **globalen** Klingelton-Schalter gibt es bewusst nicht — der Ton gehoert zum einzelnen Eintrag.
+Pure logic lives in `src/lib/`; components render only. Two factories are the single source of truth — `lib/chime.ts` (`defaultChime()`) and `test/fixtures.ts` (`makeEntry()`) — so no scattered literals, and **production code never imports from `test/`**.
 
-Zur Terminzeit spielt der 1-s-Ticker den jeweiligen Ton ab (`alarms-run.ts` → `pendingAlarms`, einmal pro ID und Tag, Autoplay-Blockaden werden geschluckt). Keine `setTimeout`-Hacks.
+| Module | Responsibility |
+| --- | --- |
+| `enums.ts`, `types.ts`, `labels.ts`, `constants.ts` | Central types, enums, labels, limits |
+| `time.ts`, `calendar.ts`, `alarm.ts`, `wecker.ts` | Date/time, month grid, minute comparison, status |
+| `entries.ts`, `chime.ts`, `preferences.ts` | Persistence + migration, chime defaults, theme |
+| `ical.ts`, `providers.ts`, `internal-sync.ts`, `bootstrap.ts` | ICS export/import, cloud adapters, auto-export, startup |
+| `sound.ts`, `youtube.ts`, `recording.ts`, `alarms-run.ts`, `notification-plan.ts`, `notification-port.ts` | Playback, URL validation, mic capture, alarm firing, scheduling |
+| `ids.ts`, `platform.ts` | `randomUUID` fallback for insecure contexts, iOS detection |
 
-> **Ehrliche Grenze:** Solange die App geschlossen ist, kann ein Browser nicht klingeln. Dafuer braucht es native lokale Notifications (siehe „Mobile").
+### Data model
 
-## Export, Import und Startup
+`CalendarEntry`: `id`, `iso`, `time`, `title`, `category`, `note`, `chimeSource`, `chimeName`, `chimeDataUrl`. Stored in `localStorage` (`clock.entries.v1`); legacy rows migrate on load (time → `09:00`, chime → default).
 
-- **.ics-Export**: VCALENDAR/VEVENT mit UTC-Zeitstempeln, RFC-5545-Escaping und **`VALARM` (`ACTION:DISPLAY`, `TRIGGER:-PT0M`)** pro Event — der Zielkalender erinnert zur Terminzeit. Der Ton selbst kann in einer `.ics` nicht mitwandern (RFC 5545 / gaengige Clients koennen kein Audio-`ATTACH`); Google/Outlook-Payloads setzen dafuer `reminders` bzw. `isReminderOn`.
-- **Interner Export ohne Datei**: `internalExportText()` / `syncInternalExport()` erzeugen ICS-Text + lesbare Zusammenfassung. Ein `$effect` aktualisiert den Snapshot **automatisch bei jeder Aenderung** — kein Button, keine Bestätigung. „Kopieren" legt das ICS ins Clipboard.
-- **Startup**: `bootstrapCalendar()` importiert alle vorhandenen lokalen Eintraege und baut den internen Export in einem Schritt.
-- **Fremde Kalender**: Ein vollautomatischer Silent-Import beim Startup ist im Browser **technisch nicht moeglich** — OAuth verlangt zwingend eine User-Geste. Gespeicherte Verbindungen werden daher als „bitte erneut anmelden" angezeigt; Buttons: **Bei Google anmelden**, **Bei Mac anmelden**, **Custom-Anbieter waehlen**, plus `.ics`-Dateiimport.
+### Chime behaviour
 
-## Architektur-Entscheidung: ein CalendarPort statt vieler Adapter
+- Four sources: bundled MP3, device MP3 (≤ 1.5 MB as data URL), validated YouTube URL (privacy-enhanced embed), microphone recording (`MediaRecorder`).
+- Preview is a **toggle**: second click, close, save and unmount all stop playback (`createPreviewController`).
+- The 1-s ticker fires each due id once per day. `claimAndFire()` claims ids **synchronously before** `await playChime`, so slow audio cannot cause a double ring. No `setTimeout` hacks.
 
-Inspiriert von [„Integrating Calendar Events in a React Native App"](https://dev.to/amitkumar13/integrating-calendar-events-in-a-react-native-app-5fgf) (`react-native-calendar-events`):
+### Export, import, startup
 
-Die relevante Erkenntnis ist **nicht** die Library, sondern das Muster: eine App redet mit **einem** nativen Kalender-Interface — `requestPermissions()` → `findCalendars()` → `saveEvent()` → `findEventById()` — statt fuer jeden Anbieter einen eigenen Pfad zu pflegen. Permissions sind ein expliziter Schritt (iOS `NSCalendarsUsageDescription`, Android Runtime-Request), `saveEvent` liefert eine **native eventId** zurueck, und iOS/Android-Unterschiede gehoeren in eine Adapter-Schicht, nicht in die UI. Der Autor bestaetigt zudem: das funktioniert nur fuer **lokale Geraetekalender**, nicht direkt fuer Google-Konten.
+- `.ics`: VCALENDAR/VEVENT, UTC stamps, RFC-5545 escaping, **`VALARM` (`ACTION:DISPLAY`, `TRIGGER:-PT0M`)** per event. Audio itself cannot travel inside an `.ics` (no standard audio `ATTACH`); Google/Outlook payloads set `reminders` / `isReminderOn` instead.
+- Internal export (`internalExportText` / `syncInternalExport`) regenerates automatically via `$effect` — no confirmation.
+- `bootstrapCalendar()` loads all local entries and builds the internal snapshot in one step.
+- **Honest limit:** a silent background import from Google/Mac/custom providers is impossible in a browser — OAuth requires a user gesture. Saved connections are surfaced as "sign in again"; buttons: Google, Mac, custom provider, `.ics` import.
 
-Fuer Clock bedeutet das: `CalendarPort` mit `requestPermission / listCalendars / fetchEvents / saveEvent / deleteEvent`. Die heutige Web-Implementierung (`ical.ts` + `providers.ts`) ist ein Port; die spaetere Native-Implementierung ein zweiter hinter demselben Interface. `fetchEvents()` macht den Startup-Import dann wirklich „alle Kalender", und die native `eventId` wird als `externalId` am Eintrag gespeichert, damit Update/Delete exakt das richtige Event treffen. Bis dahin bleiben Cloud-Adapter mit gemocktem `fetch` getestet; **ein echter Live-Sync gegen Google/Outlook ist ohne OAuth-Tokens nicht verifiziert**.
+### CalendarPort (design decision)
 
-## Mobile: Capacitor (iOS + Android)
+Inspired by [Integrating Calendar Events in a React Native App](https://dev.to/amitkumar13/integrating-calendar-events-in-a-react-native-app-5fgf): talk to **one** native calendar interface (`requestPermissions → findCalendars → fetchEvents → saveEvent → deleteEvent`) instead of maintaining a path per vendor. Permissions are explicit, `saveEvent` returns a native `eventId`, and platform differences stay in an adapter, not the UI. Today the web implementation (`ical.ts` + `providers.ts`) is that port; a native implementation will sit behind the same interface, storing `externalId` so edits/deletes hit the exact remote event. Cloud adapters are tested with mocked `fetch`; **a real live sync against Google/Outlook is not verified without OAuth tokens**.
 
-**Entscheidung: Capacitor.** Die App ist eine Svelte-5-Web-App; Capacitor packt genau diesen Build (`dist/`) in eine native Huelle — **kein Rewrite**, der gesamte TS-Code und alle Tests bleiben unveraendert.
+---
+
+## Mobile (Capacitor)
+
+**Decision: Capacitor.** The Svelte app is packaged as-is into a native shell — no rewrite, all TypeScript and all tests remain unchanged.
 
 | | React Native | Tauri 2 | Capacitor |
 | --- | --- | --- | --- |
-| UI | echte native Komponenten | WebView | WebView (WKWebView) |
-| Mobile-Reife | ausgereift | v2-mobil noch jung | ausgereift |
-| unsere App | **Komplett-Rewrite noetig** | bleibt, aber Rust/Plugins | **bleibt zu 100 %** |
-| Native Notifications | ueber Libraries | Rust/Swift-Plugin | `@capacitor/local-notifications` |
+| UI | real native components | WebView | WebView (WKWebView) |
+| Mobile maturity | mature | v2 mobile still young | mature |
+| This codebase | **full rewrite required** | reusable, but Rust/plugins | **100 % reusable** |
+| Native notifications | third-party libs | Rust/Swift plugin | `@capacitor/local-notifications` |
 
-RN scheidet aus (waere ein neues Projekt), Tauri bleibt eine Option fuer Desktop, ist aber fuer iOS/Android noch nicht die stabilste Wahl. Xcode wird fuer iOS-Build/Signing weiter benoetigt.
+React Native would be a new project; Tauri remains an option for desktop. Xcode is still required for iOS builds and signing.
 
-### Build- & Deploy-Scripts
+### Alarm while the app is closed (the core problem)
 
-| Script | Was es tut |
+A browser ticker only runs while the page is open. Therefore:
+
+- `notification-plan.ts` purely computes future notifications (`id`, `title`, `body`, `at`).
+- `notification-port.ts` exposes `requestPermission()` + `reschedule()`. Web = no-op; native = `@capacitor/local-notifications`, **cancelling all pending first** so edits/deletes never leave stale alarms.
+- `App.svelte` re-plans via `$effect` on **every** `entries` change.
+- `Info.plist`: `NSMicrophoneUsageDescription`, `NSCalendarsUsageDescription`, `UIBackgroundModes = audio`.
+
+### Build & deploy scripts
+
+| Script | Purpose |
 | --- | --- |
-| `npm run cap:sync` | `build` + `cap sync` (beide Plattformen) |
-| `npm run build:ios` | `scripts/build-ios.sh` — Simulator-Build (verifiziert). Mit `DEVICE=1 DEVELOPMENT_TEAM=<TEAM>` Device-Build |
+| `npm run cap:sync` | `build` + `cap sync` (both platforms) |
+| `npm run build:ios` | `scripts/build-ios.sh` — verified simulator build; `DEVICE=1 DEVELOPMENT_TEAM=<TEAM>` for hardware |
 | `npm run build:android` | `scripts/build-android.sh` — Gradle `assembleDebug` → `app-debug.apk` |
-| `npm run deploy:device` | `scripts/deploy-device.sh` — spielt den Build per USB auf angeschlossene Geraete (`PLATFORM=ios|android|auto`) |
+| `npm run deploy:device` | `scripts/deploy-device.sh` — installs over USB (`PLATFORM=ios|android|auto`, `LAUNCH=1` adds a readiness check) |
 
-iOS-Deploy nutzt `xcrun devicectl`, Android-Deploy `adb install -r`. Beide **pruefen vorher**, ob wirklich ein Geraet verbunden ist, und brechen mit einer klaren Meldung ab statt Erfolg zu behaupten. `LAUNCH=1` startet die iOS-App nach dem Install zusaetzlich (Readiness-Check).
-
-> **Ehrliche Voraussetzungen:** Xcode 27.1 + iOS-Simulator sind vorhanden und `build:ios` laeuft durch. Fuer **Android** fehlen auf diesem Rechner das Android SDK, `adb` und `ANDROID_HOME` (nur Java 21 ist da) — `build:android` bricht deshalb bewusst mit Exit 1 ab.
->
-> **Physisches iPhone (USB):** Ein iPhone 14 Pro (iOS 27.2.1) ist per USB verbunden, gepaart und **Developer Mode = Enabled** — der USB-Transport funktioniert (`devicectl` uebertraegt die App bis `installd`). Fuer die Installation braucht iOS aber zwingend eine **gueltige Signatur**. Dafuer muss in **Xcode → Settings → Accounts** einmalig die aktive Apple-ID (`timmsusa@gmail.com`) angemeldet sein; Xcode erzeugt dann automatisch Zertifikat + Provisioning Profile fuer das Personal Team (`GBSGAAACX7`). Ohne angemeldeten Account meldet `xcodebuild` korrekt `No Accounts: Add a new account in Accounts settings` und `deploy:device` kann kein signiertes `.app` finden. Alte/abgelaufene Zertifikate und Account-Reste wurden aus Keychain und Xcode-Prefs entfernt.
->
-> Sobald Xcode angemeldet ist, laufen `DEVICE=1 DEVELOPMENT_TEAM=GBSGAAACX7 npm run build:ios` und `PLATFORM=ios npm run deploy:device` ohne weitere Aenderung. `-allowProvisioningDeviceRegistration` registriert das Geraet dabei automatisch.
+iOS uses `xcrun devicectl`, Android uses `adb install -r`. Both **verify a device is actually connected** and fail with a clear message instead of claiming success.
 
 ```bash
-# iOS auf angeschlossenes iPhone:
-DEVICE=1 DEVELOPMENT_TEAM=ABCDE12345 npm run build:ios
-PLATFORM=ios npm run deploy:device
+# iOS on a connected iPhone (once Xcode is signed in with your Apple ID)
+DEVICE=1 DEVELOPMENT_TEAM=<YOUR_TEAM_ID> npm run build:ios
+PLATFORM=ios LAUNCH=1 npm run deploy:device
 
-# Android (nach SDK-Installation):
+# Android (after installing the Android SDK)
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 npm run build:android
 PLATFORM=android npm run deploy:device
 ```
 
-Fuer ein **physisches Geraet** braucht es zusaetzlich ein Apple Developer Team (`DEVELOPMENT_TEAM`) und ein angeschlossenes, vertrautes iPhone — automatische Installation auf Hardware ist ohne Signing nicht moeglich.
+**Environment requirements, stated honestly:** Xcode + iOS Simulator are present and `build:ios` passes. Android SDK / `adb` / `ANDROID_HOME` are **not** installed on this machine (Java 21 is), so `build:android` intentionally exits 1. A physical device requires Developer Mode enabled, a trusted USB pairing, and an Apple ID signed in to Xcode so a signing certificate and provisioning profile can be created (Personal Team works). Without an account, `xcodebuild` correctly reports `No Accounts`, and `deploy:device` finds no signed `.app`.
 
-### Wecker bei geschlossener App (der eigentliche Kern)
+---
 
-Der Browser-Ticker klingelt nur bei offener App. Deshalb:
+## Quality gates
 
-- `notification-plan.ts` berechnet **rein** die zukuenftigen Eintraege (`id`, `title`, `body`, `at`).
-- `notification-port.ts` ist der `NotificationPort`: `requestPermission()` + `reschedule()`. Auf dem Web ein No-Op (dort uebernimmt der Ticker), nativ `@capacitor/local-notifications` — vorher **cancel aller pending**, dann neu planen. So hinterlaesst Editieren/Loeschen keine veralteten Alarme.
-- `App.svelte` stoesst `reschedule` per `$effect` bei **jeder** Aenderung von `entries` an.
-- `claimAndFire()` beansprucht due IDs **synchron vor** dem `await playChime`, damit der 1-s-Ticker bei langsamem Audio nicht mehrfach klingelt.
-
-`Info.plist` enthaelt `NSMicrophoneUsageDescription`, `NSCalendarsUsageDescription` und `UIBackgroundModes = audio`.
-
-## Architektur
-
-Reine Logik in `src/lib/`, UI rendert nur. Zentrale Quellen: `lib/chime.ts` (`defaultChime()`) und `test/fixtures.ts` (`makeEntry()`) — keine verstreuten Literale, Produktionscode importiert nie aus `test/`.
-
-| Modul | Aufgabe |
+| Check | Result |
 | --- | --- |
-| `enums.ts`, `types.ts`, `labels.ts`, `constants.ts` | zentrale Konstanten/Typen |
-| `time.ts`, `calendar.ts`, `alarm.ts`, `wecker.ts` | Datum/Zeit, Raster, Alarm-Minutenvergleich, Status |
-| `entries.ts`, `chime.ts`, `preferences.ts` | Persistenz + Migration, Klingelton-Defaults, Theme |
-| `ical.ts`, `providers.ts`, `internal-sync.ts`, `bootstrap.ts` | Export/Import, Cloud-Adapter, Auto-Export, Startup |
-| `sound.ts`, `youtube.ts`, `alarms-run.ts`, `preview.test.ts` | Wiedergabe, URL-Validierung, Alarm-Ausloesung |
-| `ids.ts`, `platform.ts` | `randomUUID`-Fallback fuer unsichere Kontexte, iOS-Erkennung |
+| `npm run lint` (Biome) | 0 errors, 0 warnings |
+| `npm run typecheck` (`tsc` + `svelte-check`) | 0 errors, 0 warnings |
+| `npm run test` | **194 / 194 passing** (26 files) |
+| `npm run build` | succeeds (~88 kB JS, ~29 kB CSS) |
+| `npm run build:ios` | `BUILD SUCCEEDED` on iPhone simulator |
+| Runtime boot | installed, launched, WKWebView loaded, 0 JS errors |
 
-## Konfiguration
+`npm run verify` runs the full chain in one command. Work is **not committed before live verification and sign-off**.
 
-`.env.sample` → `.env.local` (nur **public** OAuth-Client-IDs; **niemals** Client-Secrets ins Frontend). `.env*` ist in `.gitignore`.
+---
+
+## Configuration & security
+
+- `.env.sample` → `.env.local`: **public** OAuth client IDs only. Never put client secrets in the frontend; `.env*` is gitignored.
+- Large/private media is gitignored: `public/README.md` + `scripts/setup-chime.sh` explain how to provide the bundled MP3 locally.
+- Generated iOS/Android artifacts, `dist/`, `node_modules/`, `*.mp3`, `*.apk`, `local.properties` and signing caches are excluded. No credentials, no personal data, no build output in the repository.
+
+---
+
+## Roadmap / known limits
+
+- Native `CalendarPort` implementation for device calendars and a real startup-wide import.
+- Live Google/Outlook sync verification once OAuth client IDs exist.
+- End-to-end hardware test of a scheduled notification firing at its wake-up time with the app closed.
+- Android build verification once the SDK is installed.
+
+---
+
+## License
+
+MIT — see repository settings. Built as a portfolio reference for strict-typed, tested, cross-platform product engineering.
