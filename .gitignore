@@ -1,0 +1,23 @@
+# Dependencies & build output
+node_modules/
+dist/
+.svelte-kit/
+coverage/
+
+# Local environment (never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# Large / private media assets: the bundled default chime is a local,
+# user-provided file. See public/README.md for how to provide it.
+*.mp3
+*.m4a
+*.wav
+*.ogg
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
