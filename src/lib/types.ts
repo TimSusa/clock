@@ -32,6 +32,12 @@ export interface CalendarEntry {
 	chimeSource: ChimeSource;
 	chimeName: string;
 	chimeDataUrl: string;
+	/** Play the entry's own chime (MP3/recording) instead of the bundled default. */
+	extraChime: boolean;
+	/** Native calendar event id (EventKit). Undefined until synced. */
+	externalId?: string;
+	/** From a subscribed holiday calendar (or a computed public holiday). */
+	isHoliday?: boolean;
 }
 
 export interface AlarmRow {

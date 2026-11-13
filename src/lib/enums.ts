@@ -73,6 +73,9 @@ export enum EntryCategory {
 export enum StorageKey {
 	Entries = "clock.entries.v1",
 	Theme = "clock.theme.v1",
+	ListPeriod = "clock.list.period.v1",
+	ListHolidays = "clock.list.holidays.v1",
+	ListPast = "clock.list.past.v1",
 }
 
 export enum ChimeSource {
@@ -102,6 +105,39 @@ export enum ConnectionState {
 export enum SyncDirection {
 	Export = "export",
 	Import = "import",
+}
+
+/** Actions offered on a fired alarm notification. */
+export enum AlarmActionId {
+	Cancel = "cancel",
+	Snooze = "snooze",
+}
+
+/** Period scope for the appointment list. */
+export enum ListPeriod {
+	Day = "day",
+	Week = "week",
+	Month = "month",
+	All = "all",
+}
+
+/** Whether public holidays are shown in the list. */
+export enum HolidayMode {
+	With = "with",
+	Without = "without",
+}
+
+/** iOS UNNotificationInterruptionLevel - time-sensitive breaks through Focus. */
+export enum NotificationInterruptionLevel {
+	Active = "active",
+	TimeSensitive = "timeSensitive",
+	Critical = "critical",
+}
+
+/** Whether past appointments are shown. Default: hidden. */
+export enum PastMode {
+	Hide = "hide",
+	Show = "show",
 }
 
 export enum EntryValidationError {

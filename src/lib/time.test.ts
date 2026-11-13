@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { Locale, Weekday } from "./enums";
-import { formatLongDate, isoDateKey, parseIsoDate, sameDay, toTimeParts, weekdayIso } from "./time";
+import {
+	currentTimeKey,
+	formatLongDate,
+	isoDateKey,
+	parseIsoDate,
+	sameDay,
+	toTimeParts,
+	weekdayIso,
+} from "./time";
 
 const morning = new Date(2026, 10, 12, 9, 5, 7);
 
@@ -13,6 +21,20 @@ describe("toTimeParts", () => {
 describe("formatLongDate", () => {
 	it("renders a German long date", () => {
 		expect(formatLongDate(morning, Locale.German)).toBe("Donnerstag, 12. November 2026");
+	});
+});
+
+describe("currentTimeKey", () => {
+	it("formats the current local time as HH:MM", () => {
+		expect(currentTimeKey(new Date(2026, 10, 13, 14, 5, 37))).toBe("14:05");
+	});
+
+	it("pads single-digit hours and minutes", () => {
+		expect(currentTimeKey(new Date(2026, 10, 13, 9, 7, 0))).toBe("09:07");
+	});
+
+	it("handles midnight", () => {
+		expect(currentTimeKey(new Date(2026, 10, 13, 0, 0, 0))).toBe("00:00");
 	});
 });
 

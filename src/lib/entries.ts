@@ -4,6 +4,7 @@ import { defaultChime } from "./chime";
 import { DEFAULT_CHIME_NAME, DEFAULT_TIME } from "./constants";
 import { ChimeSource, EntryCategory, EntryValidationError, StorageKey } from "./enums";
 import { newEntryId } from "./ids";
+import { readCached, writeCached } from "./storage";
 import type { CalendarEntry } from "./types";
 import { parseYouTubeUrl } from "./youtube";
 
@@ -16,6 +17,7 @@ export interface EntryDraft {
 	chimeSource: ChimeSource;
 	chimeName: string;
 	chimeDataUrl: string;
+	extraChime: boolean;
 }
 
 function isEntryCategory(value: unknown): value is EntryCategory {
@@ -61,7 +63,7 @@ function normalizeEntry(value: unknown): CalendarEntry | null {
 					chimeDataUrl: e.chimeDataUrl as string,
 				}
 			: defaultChime();
-	return {
+	const entry: CalendarEntry = {
 		id: e.id,
 		iso: e.iso,
 		time: typeof e.time === "string" && isValidTime(e.time) ? e.time : DEFAULT_TIME,
@@ -69,7 +71,22 @@ function normalizeEntry(value: unknown): CalendarEntry | null {
 		category: e.category,
 		note: e.note,
 		...chime,
+		// Legacy rows predate the per-entry toggle. An own chime must keep ringing
+		// (migrate to on); a bundled default stays off. Never silently mute.
+		extraChime:
+			typeof e.extraChime === "boolean" ? e.extraChime : chime.chimeSource !== ChimeSource.Default,
 	};
+	// The native calendar link must survive a reload (exactOptionalPropertyTypes:
+	// only set the key when a real id exists, never assign undefined).
+	if (typeof e.externalId === "string" && e.externalId.length > 0) {
+		entry.externalId = e.externalId;
+	}
+	// Imported holidays must survive a reload, otherwise "Ohne Feiertage"
+	// would silently stop hiding them after the next app start.
+	if (e.isHoliday === true) {
+		entry.isHoliday = true;
+	}
+	return entry;
 }
 
 export function validateDraft(draft: CalendarEntry): EntryValidationError | null {
@@ -90,6 +107,7 @@ export function createEntry(draft: EntryDraft, makeId: () => string = newEntryId
 		chimeSource: draft.chimeSource,
 		chimeName: draft.chimeName,
 		chimeDataUrl: draft.chimeDataUrl,
+		extraChime: draft.extraChime,
 	};
 }
 
@@ -121,11 +139,11 @@ export function updateEntry(
 export const sortEntries = sortByDateTime;
 
 export function saveEntries(entries: readonly CalendarEntry[]): void {
-	localStorage.setItem(StorageKey.Entries, JSON.stringify(entries));
+	writeCached(StorageKey.Entries, JSON.stringify(entries));
 }
 
 export function loadEntries(): readonly CalendarEntry[] {
-	const raw = localStorage.getItem(StorageKey.Entries);
+	const raw = readCached(StorageKey.Entries);
 	if (!raw) return [];
 	try {
 		const parsed: unknown = JSON.parse(raw);

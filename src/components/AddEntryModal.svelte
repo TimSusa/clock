@@ -2,7 +2,7 @@
 import { onDestroy } from "svelte";
 import { buildMonthGrid, shiftMonth } from "../lib/calendar";
 import { defaultChime } from "../lib/chime";
-import { DEFAULT_CHIME_NAME, DEFAULT_TIME } from "../lib/constants";
+import { DEFAULT_CHIME_NAME } from "../lib/constants";
 import { createEntry, validateDraft } from "../lib/entries";
 import { ChimeSource, EntryCategory, EntryValidationError, Month } from "../lib/enums";
 import {
@@ -14,9 +14,11 @@ import {
 	ADD_ENTRY_SUBMIT,
 	ADD_ENTRY_TIME_LABEL,
 	ADD_ENTRY_TITLE_LABEL,
+	CHIME_CONVERT_FAILED,
 	CHIME_CUSTOM_LABEL,
 	CHIME_DEFAULT_LABEL,
 	CHIME_LABEL,
+	CHIME_NONE_HINT,
 	CHIME_PREVIEW_LABEL,
 	CHIME_RECORD_DENIED,
 	CHIME_RECORD_LABEL,
@@ -34,16 +36,20 @@ import {
 	EDIT_ENTRY_LABEL,
 	ENTRY_CATEGORIES,
 	ENTRY_CATEGORY_LABEL,
+	EXTRA_CHIME_LABEL,
+	EXTRA_CHIME_OFF,
+	EXTRA_CHIME_ON,
 	HIDE_CALENDAR_LABEL,
 	PICK_DATE_LABEL,
 	SAVE_ENTRY_SUBMIT,
 	VALIDATION_MESSAGE,
 } from "../lib/labels";
 import type { RecorderLike } from "../lib/recording";
-import { blobToDataUrl, isAcceptableRecording, recordChime } from "../lib/recording";
+import { isAcceptableRecording, recordChime } from "../lib/recording";
 import { createPreviewController, isAcceptableAudioFile, resolveChimeUrl } from "../lib/sound";
-import { parseIsoDate } from "../lib/time";
+import { currentTimeKey, parseIsoDate } from "../lib/time";
 import type { CalendarEntry, MonthGrid } from "../lib/types";
+import { blobToDataUrl, browserWavDeps, normalizeOwnChime } from "../lib/wav";
 import { parseYouTubeUrl, youtubeEmbedUrl } from "../lib/youtube";
 import CalendarGrid from "./CalendarGrid.svelte";
 
@@ -78,15 +84,18 @@ const isEdit: boolean = initial !== undefined;
 
 let title: string = $state(initial?.title ?? "");
 let note: string = $state(initial?.note ?? "");
-let time: string = $state(initial?.time ?? DEFAULT_TIME);
+// New entries start at the current time; editing keeps the stored time.
+let time: string = $state(initial?.time ?? currentTimeKey());
 let category: EntryCategory = $state(initial?.category ?? EntryCategory.Event);
 let dateOverride = $state<string | null>(null);
 let error: EntryValidationError | null = $state(null);
 let showCalendar = $state(false);
+let extraChime: boolean = $state(initial?.extraChime ?? defaultChime().extraChime);
 let chimeSource: ChimeSource = $state(initial?.chimeSource ?? defaultChime().chimeSource);
 let chimeName: string = $state(initial?.chimeName ?? DEFAULT_CHIME_NAME);
 let chimeDataUrl: string = $state(initial?.chimeDataUrl ?? "");
 let chimeError = $state("");
+let chimeFallbackHint = $state("");
 let youtubeInput: string = $state(
 	initial?.chimeSource === ChimeSource.YouTube ? (initial?.chimeDataUrl ?? "") : "",
 );
@@ -133,6 +142,7 @@ function handleSubmit(event: SubmitEvent): void {
 		chimeSource,
 		chimeName,
 		chimeDataUrl,
+		extraChime,
 	});
 	const validation = validateDraft(draft);
 	if (validation !== null) {
@@ -142,7 +152,14 @@ function handleSubmit(event: SubmitEvent): void {
 	preview.stop();
 	youtubePreviewId = null;
 	releaseRecorder();
-	onSave(initial ? { ...draft, id: initial.id } : draft);
+	if (initial) {
+		const edited: CalendarEntry = { ...draft, id: initial.id };
+		// Keep the native calendar link so editing updates the exact EventKit event.
+		if (initial.externalId) edited.externalId = initial.externalId;
+		onSave(edited);
+	} else {
+		onSave(draft);
+	}
 	onClose();
 }
 
@@ -160,12 +177,34 @@ function selectDefaultChime(): void {
 	chimeName = DEFAULT_CHIME_NAME;
 	chimeDataUrl = "";
 	chimeError = "";
+	chimeFallbackHint = "";
+}
+
+/**
+ * ONE path for any own chime (microphone Blob or picked MP3 File). The raw
+ * Blob is transcoded directly - no data-URL round-trip. On a real codec gap
+ * the entry falls back to the bundled default sound at alarm time, so the
+ * hint says exactly that instead of claiming the recording will be used.
+ */
+async function applyOwnChime(blob: Blob): Promise<void> {
+	chimeError = "";
+	chimeFallbackHint = "";
+	try {
+		// Keep the raw clip for the in-app preview even when transcoding fails.
+		chimeDataUrl = await blobToDataUrl(blob);
+		chimeDataUrl = await normalizeOwnChime(blob, browserWavDeps());
+	} catch {
+		// ONE error channel: conversion (or reading the file) did not work.
+		// The alarm will play the bundled default; the preview stays audible.
+		chimeFallbackHint = CHIME_CONVERT_FAILED;
+	}
 }
 
 async function startRecording(): Promise<void> {
 	preview.stop();
 	youtubePreviewId = null;
 	chimeError = "";
+	chimeFallbackHint = "";
 
 	if (
 		typeof navigator === "undefined" ||
@@ -191,20 +230,19 @@ async function startRecording(): Promise<void> {
 	activeRecorder = recorder;
 
 	try {
-		const { dataUrl } = await recordChime({
+		const { blob } = await recordChime({
 			makeRecorder: () => recorder,
-			toDataUrl: (blob) => blobToDataUrl(blob),
 			...(pendingStop ? { stopImmediately: true } : {}),
 		});
-		const estimatedBytes = Math.ceil((dataUrl.length * 3) / 4);
-		if (!isAcceptableRecording({ type: "audio/webm", size: estimatedBytes })) {
+		if (!isAcceptableRecording(blob)) {
 			chimeError = CHIME_TOO_LARGE;
 		} else {
+			await applyOwnChime(blob);
 			chimeSource = ChimeSource.Recorded;
 			chimeName = CHIME_RECORD_NAME;
-			chimeDataUrl = dataUrl;
 		}
 	} catch {
+		// Only the recording step itself can fail here (mic/MediaRecorder).
 		chimeError = CHIME_RECORD_UNAVAILABLE;
 	} finally {
 		releaseRecorder();
@@ -234,16 +272,9 @@ async function handleChimeFile(event: Event): Promise<void> {
 		chimeError = CHIME_TOO_LARGE;
 		return;
 	}
-	const dataUrl = await new Promise<string>((resolve, reject) => {
-		const reader = new FileReader();
-		reader.onload = () => resolve(String(reader.result ?? ""));
-		reader.onerror = () => reject(reader.error);
-		reader.readAsDataURL(file);
-	});
 	chimeSource = ChimeSource.Custom;
 	chimeName = file.name;
-	chimeDataUrl = dataUrl;
-	chimeError = "";
+	await applyOwnChime(file);
 	input.value = "";
 }
 
@@ -259,6 +290,7 @@ function applyYouTube(): void {
 	chimeName = `YouTube ${id}`;
 	chimeDataUrl = youtubeInput.trim();
 	chimeError = "";
+	chimeFallbackHint = "";
 }
 
 function toggleYoutubePreview(): void {
@@ -273,7 +305,7 @@ async function previewChime(): Promise<void> {
 		toggleYoutubePreview();
 		return;
 	}
-	await preview.toggle(resolveChimeUrl({ chimeSource, chimeDataUrl }));
+	await preview.toggle(resolveChimeUrl({ chimeSource, chimeDataUrl, extraChime }));
 }
 
 function handleKeydown(event: KeyboardEvent): void {
@@ -415,6 +447,26 @@ function pickDate(iso: string): void {
 
 			<fieldset>
 				<legend class="mb-1 block text-xs text-slate-500 dark:text-slate-400">{CHIME_LABEL}</legend>
+				<button
+					type="button"
+					data-testid="extra-chime-toggle"
+					aria-label={EXTRA_CHIME_LABEL}
+					aria-pressed={extraChime}
+					onclick={() => (extraChime = !extraChime)}
+					class="mb-2 flex h-10 w-full items-center justify-between rounded-lg border px-3 text-xs font-medium transition-colors {extraChime
+						? 'border-sky-500 bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+						: 'border-slate-200 text-slate-500 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-700'}"
+				>
+					<span>{EXTRA_CHIME_LABEL}</span>
+					<span class="font-semibold">{extraChime ? EXTRA_CHIME_ON : EXTRA_CHIME_OFF}</span>
+				</button>
+
+				{#if extraChime}
+					{#if chimeSource === ChimeSource.Default}
+						<p data-testid="chime-empty-hint" class="mb-2 text-xs text-amber-600 dark:text-amber-400">
+							{CHIME_NONE_HINT}
+						</p>
+					{/if}
 				<div class="mb-2 flex flex-wrap gap-1">
 					<button
 						type="button"
@@ -449,6 +501,7 @@ function pickDate(iso: string): void {
 						onclick={() => {
 							chimeSource = ChimeSource.YouTube;
 							chimeError = "";
+	chimeFallbackHint = "";
 						}}
 						class="h-9 rounded-lg px-3 text-xs font-medium transition-colors {chimeSource === ChimeSource.YouTube
 							? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
@@ -480,8 +533,9 @@ function pickDate(iso: string): void {
 						{CHIME_PREVIEW_LABEL}
 					</button>
 				</div>
+				{/if}
 
-				{#if chimeSource === ChimeSource.YouTube}
+				{#if extraChime && chimeSource === ChimeSource.YouTube}
 					<div class="mb-2 flex gap-2">
 						<input
 							data-testid="chime-youtube-url"
@@ -513,10 +567,15 @@ function pickDate(iso: string): void {
 				{/if}
 
 				<p data-testid="chime-name" class="mb-1 truncate text-xs text-slate-500 dark:text-slate-400">
-					♪ {chimeName}
+					♪ {extraChime ? chimeName : "Standard (Saraba)"}
 				</p>
 				{#if chimeError}
 					<p role="alert" data-testid="chime-error" class="text-xs font-medium text-rose-600">{chimeError}</p>
+				{/if}
+				{#if chimeFallbackHint}
+					<p data-testid="chime-fallback-hint" class="text-xs text-sky-600 dark:text-sky-400">
+						♪ {chimeFallbackHint}
+					</p>
 				{/if}
 			</fieldset>
 

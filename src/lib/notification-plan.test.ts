@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeEntry } from "../test/fixtures";
 import { combineDateTime } from "./alarm";
+import { NotificationInterruptionLevel } from "./enums";
 import { notificationIdFor, planNotifications } from "./notification-plan";
 
 const NOW = new Date(2026, 10, 12, 9, 0, 0);
@@ -31,6 +32,7 @@ describe("planNotifications", () => {
 			iso: "2026-11-12",
 			time: "10:00",
 			chimeName: "Eigene Aufnahme",
+			extraChime: true,
 		});
 		expect(planNotifications([future], NOW)[0]?.body).toContain("Eigene Aufnahme");
 	});
@@ -38,6 +40,18 @@ describe("planNotifications", () => {
 	it("skips invalid dates", () => {
 		const broken = makeEntry({ id: "b", iso: "not-a-date", time: "10:00" });
 		expect(planNotifications([broken], NOW)).toEqual([]);
+	});
+
+	it("marks alarms TIME-SENSITIVE so they appear on the LOCK SCREEN", () => {
+		const future = makeEntry({ id: "f", iso: "2026-11-12", time: "10:00" });
+		expect(planNotifications([future], NOW)[0]?.interruptionLevel).toBe(
+			NotificationInterruptionLevel.TimeSensitive,
+		);
+	});
+
+	it("presents in the foreground so the alarm dialog can take over", () => {
+		const future = makeEntry({ id: "f", iso: "2026-11-12", time: "10:00" });
+		expect(planNotifications([future], NOW)[0]?.foreground).toBe(true);
 	});
 
 	it("returns dates as real Date objects in local time", () => {

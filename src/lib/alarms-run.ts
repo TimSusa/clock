@@ -34,11 +34,11 @@ export function claimAndFire(
 	entries: readonly CalendarEntry[],
 	now: Date,
 	firedIds: string[],
-	player: ChimePlayer,
+	player?: ChimePlayer,
 ): Promise<void> {
 	const due = pendingAlarms(entries, now, firedIds);
 	for (const entry of due) firedIds.push(entry.id);
-	if (due.length === 0) return Promise.resolve();
+	if (due.length === 0 || !player) return Promise.resolve();
 
 	return (async () => {
 		for (const entry of due) {

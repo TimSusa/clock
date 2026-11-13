@@ -7,6 +7,7 @@ export interface NotificationPort {
 	reschedule(entries: readonly CalendarEntry[], now: Date): Promise<void>;
 }
 
+/** Exactly the shape of @capacitor/local-notifications' LocalNotifications. */
 export interface NativeNotifications {
 	checkPermissions(): Promise<{ display: string }>;
 	requestPermissions(): Promise<{ display: string }>;
@@ -16,6 +17,11 @@ export interface NativeNotifications {
 			id: number;
 			title: string;
 			body: string;
+			sound: string;
+			actionTypeId: string;
+			interruptionLevel: string;
+			foreground: boolean;
+			extra: { entryId: string };
 			schedule: { at: Date };
 		}>;
 	}): Promise<void>;
@@ -23,58 +29,51 @@ export interface NativeNotifications {
 }
 
 /**
- * A native bridge only exists inside the Capacitor shell. Checking for it
- * before importing keeps the plain web build (and jsdom) completely clean.
- */
-function hasNativeBridge(): boolean {
-	return (
-		typeof window !== "undefined" &&
-		(
-			window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }
-		).Capacitor?.isNativePlatform?.() === true
-	);
-}
-
-async function loadNative(): Promise<NativeNotifications | null> {
-	if (!hasNativeBridge()) return null;
-	try {
-		const mod = await import("@capacitor/local-notifications");
-		return mod.LocalNotifications as unknown as NativeNotifications;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Cancel all previously scheduled alarms and schedule the current set.
- * Called whenever `entries` change, so edits/deletes never leave stale alarms.
+ * Re-plan the native alarm schedule. `schedule()` replaces notifications with
+ * the same id, so it MUST NOT wait on getPending(): on iOS that call can hang
+ * during startup, which left every alarm unscheduled. Stale entries are
+ * cancelled best-effort afterwards, never in the critical path.
  */
 export async function rescheduleWith(
 	native: NativeNotifications,
 	entries: readonly CalendarEntry[],
 	now: Date,
 ): Promise<void> {
-	const pending = await native.getPending();
-	if (pending.notifications.length > 0) {
-		await native.cancel({ notifications: pending.notifications });
+	const planned = planNotifications(entries, now);
+	const plannedIds = new Set(planned.map((item) => item.id));
+
+	if (planned.length > 0) {
+		await native.schedule({
+			notifications: planned.map((item: PlannedNotification) => ({
+				id: item.id,
+				title: item.title,
+				body: item.body,
+				sound: item.sound,
+				actionTypeId: item.actionTypeId,
+				interruptionLevel: item.interruptionLevel,
+				foreground: item.foreground,
+				extra: { entryId: item.entryId },
+				schedule: { at: item.at },
+			})),
+		});
 	}
 
-	const planned = planNotifications(entries, now);
-	if (planned.length === 0) return;
-
-	await native.schedule({
-		notifications: planned.map((item: PlannedNotification) => ({
-			id: item.id,
-			title: item.title,
-			body: item.body,
-			schedule: { at: item.at },
-		})),
-	});
+	void native
+		.getPending()
+		.then((pending) => {
+			const stale = pending.notifications.filter((n) => !plannedIds.has(n.id));
+			if (stale.length > 0) void native.cancel({ notifications: stale }).catch(() => {});
+		})
+		.catch(() => {});
 }
 
-/** Native-backed port. On the web it degrades to a no-op port. */
-export async function createNotificationPort(): Promise<NotificationPort> {
-	const native = await loadNative();
+/**
+ * ONE source of truth: the caller passes the SAME LocalNotifications object it
+ * already imported for registerActionTypes/addListener. No second dynamic
+ * import (Vite split it into a different chunk that never resolved on iOS),
+ * no separate platform gate.
+ */
+export function createNotificationPort(native: NativeNotifications | null): NotificationPort {
 	if (!native) {
 		return {
 			async requestPermission() {
@@ -85,13 +84,16 @@ export async function createNotificationPort(): Promise<NotificationPort> {
 			},
 		};
 	}
-
 	return {
 		async requestPermission() {
-			const current = await native.checkPermissions();
-			if (current.display === "granted") return true;
-			const requested = await native.requestPermissions();
-			return requested.display === "granted";
+			try {
+				const current = await native.checkPermissions();
+				if (current.display === "granted") return true;
+				const requested = await native.requestPermissions();
+				return requested.display === "granted";
+			} catch {
+				return false;
+			}
 		},
 		async reschedule(entries, now) {
 			await rescheduleWith(native, entries, now);

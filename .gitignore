@@ -15,6 +15,8 @@ coverage/
 *.m4a
 *.wav
 *.ogg
+# ...but the short iOS notification sound MUST ship (no sound on iOS without it).
+!public/chime-notification.wav
 
 # iOS / Capacitor generated artifacts
 ios/App/App/public/

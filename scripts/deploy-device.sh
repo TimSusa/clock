@@ -6,6 +6,8 @@
 # Requires: Xcode (iOS) / Android SDK platform-tools + USB debugging (Android).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# shellcheck source=device.sh
+. "$(dirname "$0")/device.sh"
 
 PLATFORM="${PLATFORM:-auto}"
 DERIVED="${DERIVED_DATA:-/tmp/clock-derived}"
@@ -56,7 +58,7 @@ deploy_ios() {
     return 1
   fi
   local devices
-  devices="$(xcrun devicectl list devices 2>/dev/null | awk '/\(UDID\)/ && $0 !~ /simulated/ {print $4}' || true)"
+  devices="$(physical_udids)"
   if [ -z "$devices" ]; then
     echo "✖ Kein physisches iOS-Geraet per USB erkannt." >&2
     echo "  Geraet anschliessen, entsperren und 'Diesem Computer vertrauen' bestaetigen." >&2

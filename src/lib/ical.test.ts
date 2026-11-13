@@ -40,6 +40,42 @@ describe("exportIcs", () => {
 		expect(exportIcs([])).toContain("BEGIN:VCALENDAR");
 		expect(exportIcs([])).not.toContain("BEGIN:VEVENT");
 	});
+
+	it("writes and reads the extraChime flag (state survives export/import)", () => {
+		const withExtra = makeEntry({
+			id: "on",
+			iso: "2026-11-12",
+			time: "09:00",
+			title: "Mit Ton",
+			extraChime: true,
+		});
+		const withoutExtra = makeEntry({
+			id: "off",
+			iso: "2026-11-12",
+			time: "10:00",
+			title: "Ohne Ton",
+			extraChime: false,
+		});
+		const ics = exportIcs([withExtra, withoutExtra]);
+		expect(ics).toContain("X-CLOCK-EXTRA-CHIME:TRUE");
+		expect(ics).toContain("X-CLOCK-EXTRA-CHIME:FALSE");
+		const parsed = parseIcs(ics);
+		expect(parsed.find((e) => e.id === "on")?.extraChime).toBe(true);
+		expect(parsed.find((e) => e.id === "off")?.extraChime).toBe(false);
+	});
+
+	it("defaults extraChime to false for a foreign ICS without the property", () => {
+		const ics = [
+			"BEGIN:VCALENDAR",
+			"BEGIN:VEVENT",
+			"UID:ext@example.com",
+			"DTSTART:20261120T100000Z",
+			"SUMMARY:Extern",
+			"END:VEVENT",
+			"END:VCALENDAR",
+		].join("\r\n");
+		expect(parseIcs(ics)[0]?.extraChime).toBe(false);
+	});
 });
 
 describe("parseIcs", () => {

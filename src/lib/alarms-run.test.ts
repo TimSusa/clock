@@ -23,6 +23,7 @@ describe("fireAlarms", () => {
 				time: "09:05",
 				chimeSource: ChimeSource.Custom,
 				chimeDataUrl: "data:audio/mpeg;base64,X",
+				extraChime: true,
 			}),
 		];
 		await fireAlarms(entries, NOW, [], player);

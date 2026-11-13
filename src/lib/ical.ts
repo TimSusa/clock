@@ -73,6 +73,7 @@ export function exportIcs(entries: readonly CalendarEntry[]): string {
 			`DTEND:${toUtcStamp(end)}`,
 			`SUMMARY:${escapeText(entry.title)}`,
 			`DESCRIPTION:${escapeText(entry.note)}`,
+			`X-CLOCK-EXTRA-CHIME:${entry.extraChime ? "TRUE" : "FALSE"}`,
 			"BEGIN:VALARM",
 			"ACTION:DISPLAY",
 			"TRIGGER:-PT0M",
@@ -126,6 +127,7 @@ export function parseIcs(text: string): readonly CalendarEntry[] {
 		let start: Date | null = null;
 		let title = "";
 		let note = "";
+		let extraChime = false;
 		let inAlarm = false;
 
 		for (const line of block) {
@@ -155,6 +157,9 @@ export function parseIcs(text: string): readonly CalendarEntry[] {
 				case "DESCRIPTION":
 					note = unescapeText(value);
 					break;
+				case "X-CLOCK-EXTRA-CHIME":
+					extraChime = value.trim().toUpperCase() === "TRUE";
+					break;
 			}
 		}
 
@@ -167,6 +172,7 @@ export function parseIcs(text: string): readonly CalendarEntry[] {
 			category: EntryCategory.Event,
 			note,
 			...defaultChime(),
+			extraChime,
 		});
 	}
 

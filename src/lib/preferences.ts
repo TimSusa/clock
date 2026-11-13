@@ -1,4 +1,5 @@
 import { StorageKey, Theme } from "./enums";
+import { readCached, writeCached } from "./storage";
 
 export interface Preferences {
 	theme: Theme;
@@ -7,7 +8,7 @@ export interface Preferences {
 const DEFAULTS: Preferences = { theme: Theme.Light };
 
 function readEnum<T extends string>(key: StorageKey, allowed: readonly T[]): T | null {
-	const value = localStorage.getItem(key);
+	const value = readCached(key);
 	return value !== null && allowed.includes(value as T) ? (value as T) : null;
 }
 
@@ -16,5 +17,5 @@ export function loadPreferences(): Preferences {
 }
 
 export function savePreferences(preferences: Preferences): void {
-	localStorage.setItem(StorageKey.Theme, preferences.theme);
+	writeCached(StorageKey.Theme, preferences.theme);
 }

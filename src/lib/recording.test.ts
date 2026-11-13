@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MAX_CUSTOM_CHIME_BYTES } from "./constants";
-import { blobToDataUrl, isAcceptableRecording, recordChime } from "./recording";
+import { isAcceptableRecording, recordChime } from "./recording";
+import { blobToDataUrl } from "./wav";
 
 describe("isAcceptableRecording", () => {
 	it("accepts a webm/audio blob within the size limit", () => {
@@ -24,17 +25,35 @@ describe("isAcceptableRecording", () => {
 });
 
 describe("blobToDataUrl", () => {
-	it("resolves with the FileReader result", async () => {
-		const result = await blobToDataUrl(new Blob(["abcd"], { type: "audio/webm" }), (reader) => {
-			// simulate a successful read
-			reader.onload?.({ target: reader } as unknown as ProgressEvent<FileReader>);
+	it("keeps the audio MIME type in the data URL", async () => {
+		const result = await blobToDataUrl(new Blob(["abcd"], { type: "audio/webm" }));
+		expect(result.startsWith("data:audio/webm;base64,")).toBe(true);
+	});
+});
+
+describe("recordChime (raw blob path)", () => {
+	it("resolves with the raw Blob so transcoding never round-trips through a data URL", async () => {
+		const chunk = new Blob(["aac"], { type: "audio/mp4" });
+		const recorder = {
+			state: "inactive" as RecordingState,
+			start: vi.fn(),
+			stop: vi.fn(),
+			ondataavailable: null as ((e: { data: BlobPart }) => void) | null,
+			onstop: null as (() => void) | null,
+		};
+		const promise = recordChime({
+			makeRecorder: () => recorder,
 		});
-		expect(typeof result).toBe("string");
+		recorder.ondataavailable?.({ data: chunk });
+		recorder.onstop?.();
+		const result = await promise;
+		expect(result.blob).toBeInstanceOf(Blob);
+		expect(result.blob.type).toBe("audio/mp4");
 	});
 });
 
 describe("recordChime", () => {
-	it("starts the recorder and resolves with a data url on stop", async () => {
+	it("starts the recorder and resolves with the raw blob on stop", async () => {
 		const chunk = new Blob(["aaa"], { type: "audio/webm" });
 		const recorder = {
 			state: "inactive" as RecordingState,
@@ -48,23 +67,19 @@ describe("recordChime", () => {
 			onstop: null as (() => void) | null,
 		};
 
-		const promise = recordChime({
-			makeRecorder: () => recorder,
-			toDataUrl: async () => "data:audio/webm;base64,AAA",
-		});
+		const promise = recordChime({ makeRecorder: () => recorder });
 
 		expect(recorder.start).toHaveBeenCalledTimes(1);
 		recorder.ondataavailable?.({ data: chunk });
 		recorder.onstop?.();
-		await expect(promise).resolves.toEqual({
-			dataUrl: "data:audio/webm;base64,AAA",
-			mimeType: "audio/webm",
-		});
+		const result = await promise;
+		expect(result.blob.type).toBe("audio/webm");
+		expect(result.mimeType).toBe("audio/webm");
 	});
 
 	it("rejects clearly when MediaRecorder is unavailable", async () => {
-		await expect(
-			recordChime({ makeRecorder: () => undefined, toDataUrl: async () => "" }),
-		).rejects.toThrow("recording-unavailable");
+		await expect(recordChime({ makeRecorder: () => undefined })).rejects.toThrow(
+			"recording-unavailable",
+		);
 	});
 });

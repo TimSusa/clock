@@ -14,9 +14,15 @@ export function isAcceptableAudioFile(file: AudioFileLike): boolean {
 	return isMp3 && file.size > 0 && file.size <= MAX_CUSTOM_CHIME_BYTES;
 }
 
-export type ChimeFields = Pick<CalendarEntry, "chimeSource" | "chimeDataUrl">;
+export type ChimeFields = Pick<CalendarEntry, "chimeSource" | "chimeDataUrl" | "extraChime">;
 
+/**
+ * Single source of truth for the FOREGROUND chime. When the per-entry extra
+ * chime is off, the bundled default plays - even if own audio is still stored
+ * (the toggle is a gate, not a reset, so switching back restores the clip).
+ */
 export function resolveChimeUrl(entry: ChimeFields): string {
+	if (!entry.extraChime) return DEFAULT_CHIME_URL;
 	if (entry.chimeSource === ChimeSource.YouTube) {
 		const id = parseYouTubeUrl(entry.chimeDataUrl);
 		return id !== null ? (youtubeEmbedUrl(id) ?? DEFAULT_CHIME_URL) : DEFAULT_CHIME_URL;
@@ -41,6 +47,71 @@ export function browserPlayer(url: string): Promise<void> {
 		audio.onerror = () => reject(new Error("audio-playback-failed"));
 		void audio.play().catch(reject);
 	});
+}
+
+export interface AlarmPlayer {
+	play(url: string): Promise<void>;
+	stop(): void;
+	isPlaying(): boolean;
+}
+
+/**
+ * Stoppable alarm player. Unlike browserPlayer() it keeps the Audio instance,
+ * so Cancel/Snooze/unmount can actually silence a running chime. stop() also
+ * resolves the pending play promise - otherwise the alarm loop would hang.
+ */
+export function createAlarmPlayer(
+	makeAudio: () => {
+		src: string;
+		pause(): void;
+		play(): Promise<void>;
+		onended: (() => void) | null;
+		onError: (() => void) | null;
+	} = () => new Audio() as never,
+): AlarmPlayer {
+	let audio: ReturnType<typeof makeAudio> | null = null;
+	let resolvePending: (() => void) | null = null;
+
+	function finish(): void {
+		resolvePending?.();
+		resolvePending = null;
+		audio = null;
+	}
+
+	function stop(): void {
+		if (!audio) return;
+		audio.onended = null;
+		audio.onError = null;
+		audio.pause();
+		finish();
+	}
+
+	return {
+		play(url: string): Promise<void> {
+			stop();
+			const current = makeAudio();
+			audio = current;
+			current.src = url;
+			return new Promise<void>((resolve, reject) => {
+				resolvePending = resolve;
+				current.onended = () => {
+					if (audio === current) finish();
+				};
+				current.onError = () => {
+					if (audio === current) finish();
+					reject(new Error("audio-playback-failed"));
+				};
+				void current.play().catch(() => {
+					if (audio === current) finish();
+					reject(new Error("audio-playback-failed"));
+				});
+			});
+		},
+		stop,
+		isPlaying(): boolean {
+			return audio !== null;
+		},
+	};
 }
 
 export interface PreviewAudio {

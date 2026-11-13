@@ -21,6 +21,20 @@ describe("parseYouTubeUrl", () => {
 		expect(parseYouTubeUrl("https://youtube.com/watch?v=short")).toBeNull();
 	});
 
+	it("accepts mobile share links with trailing text / tracking params", () => {
+		expect(parseYouTubeUrl("https://m.youtube.com/watch?v=dQw4w9WgXcQ&si=abc&feature=share")).toBe(
+			"dQw4w9WgXcQ",
+		);
+		expect(parseYouTubeUrl("Schau dir das an https://youtu.be/dQw4w9WgXcQ?si=xyz an")).toBe(
+			"dQw4w9WgXcQ",
+		);
+		expect(parseYouTubeUrl("https://music.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
+	});
+
+	it("accepts a bare mobile link without a scheme", () => {
+		expect(parseYouTubeUrl("m.youtube.com/watch?v=dQw4w9WgXcQ&t=42s")).toBe("dQw4w9WgXcQ");
+	});
+
 	it("rejects non-YouTube urls and empty input", () => {
 		expect(parseYouTubeUrl("https://vimeo.com/123")).toBeNull();
 		expect(parseYouTubeUrl("")).toBeNull();

@@ -10,6 +10,9 @@ const config: CapacitorConfig = {
 	plugins: {
 		LocalNotifications: {
 			smallIcon: "ic_stat_icon",
+			// Fallback when the plugin's in-memory request lookup is empty after
+			// an app restart: alarms must still show a banner on the Lock Screen.
+			presentationOptions: ["banner", "list", "sound", "badge"],
 		},
 	},
 };

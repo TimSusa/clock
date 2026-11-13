@@ -1,31 +1,34 @@
 import { YOUTUBE_EMBED_ORIGIN } from "./labels";
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
-
-/** Extract an 11-char video id from common YouTube url shapes. */
+/**
+ * Extract an 11-char video id from ANY YouTube share shape. Mobile "Share"
+ * links arrive with tracking params (`&si=`, `?feature=share`), surrounding
+ * text, `music.youtube.com`, or even without a URL scheme. So: strip the
+ * YouTube host out of the string, then cut everything AFTER the id.
+ */
 export function parseYouTubeUrl(raw: string): string | null {
-	let url: URL;
-	try {
-		url = new URL(raw.trim());
-	} catch {
-		return null;
-	}
+	const text = raw.trim();
+	if (text.length === 0) return null;
 
-	const host = url.hostname.replace(/^www\./, "").replace(/^m\./, "");
-	let id: string | null = null;
+	// Find the YouTube URL inside arbitrary surrounding text / missing scheme.
+	const hostMatch = /(?:https?:\/\/)?(?:[\w-]+\.)*(?:youtube(?:-nocookie)?\.com|youtu\.be)/i.exec(
+		text,
+	);
+	if (!hostMatch) return null;
+	const fromHost = text.slice(hostMatch.index);
 
-	if (host === "youtube.com" || host === "youtube-nocookie.com") {
-		if (url.pathname === "/watch") {
-			id = url.searchParams.get("v");
-		} else {
-			const match = /^\/(?:embed|shorts|live|v)\/([^/?]+)/.exec(url.pathname);
-			id = match?.[1] ?? null;
-		}
-	} else if (host === "youtu.be") {
-		id = url.pathname.slice(1).split("/")[0] ?? null;
-	}
+	// `?v=` / `&v=` (works even with trailing text after the id).
+	const vParam = /[?&]v=([A-Za-z0-9_-]{11})/.exec(fromHost);
+	if (vParam?.[1] && VIDEO_ID.test(vParam[1])) return vParam[1];
 
-	return id !== null && VIDEO_ID.test(id) ? id : null;
+	// Path forms: /watch, /embed/, /shorts/, /live/, /v/, youtu.be/<id>.
+	const path = /^\S*?\/(?:embed|shorts|live|v)\/([A-Za-z0-9_-]{11})/.exec(fromHost);
+	if (path?.[1]) return path[1];
+	const short = /youtu\.be\/([A-Za-z0-9_-]{11})/i.exec(fromHost);
+	if (short?.[1]) return short[1];
+
+	return null;
 }
 
 export function youtubeEmbedUrl(id: string): string | null {

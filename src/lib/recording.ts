@@ -14,13 +14,13 @@ export interface RecorderLike {
 }
 
 export interface RecordedChime {
-	dataUrl: string;
+	/** The raw MediaRecorder blob. Transcoding consumes THIS, never a data URL. */
+	blob: Blob;
 	mimeType: string;
 }
 
 export interface RecordDeps {
 	makeRecorder: () => RecorderLike | undefined;
-	toDataUrl: (blob: Blob) => Promise<string>;
 	/** Stop as soon as the handlers are attached (user clicked stop during permission prompt). */
 	stopImmediately?: boolean;
 	onChunk?: (chunk: BlobPart) => void;
@@ -30,20 +30,11 @@ export function isAcceptableRecording(blob: BlobLike): boolean {
 	return /^audio\//.test(blob.type) && blob.size > 0 && blob.size <= MAX_CUSTOM_CHIME_BYTES;
 }
 
-/** FileReader-backed Blob → data URL, injectable for tests. */
-export function blobToDataUrl(
-	blob: Blob,
-	drive: (reader: FileReader) => void = (reader) => reader.readAsDataURL(blob),
-): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const reader = new FileReader();
-		reader.onload = () => resolve(String(reader.result ?? ""));
-		reader.onerror = () => reject(reader.error);
-		drive(reader);
-	});
-}
-
-/** Record one clip; resolves when stop() fires. No timers involved. */
+/**
+ * Record one clip; resolves with the raw Blob when stop() fires. The blob is
+ * handed straight to the WAV transcoder - no Blob->dataURL->Blob round-trip,
+ * which is what broke decodeAudioData for iOS audio/mp4 recordings.
+ */
 export function recordChime(deps: RecordDeps): Promise<RecordedChime> {
 	return new Promise((resolve, reject) => {
 		const recorder = deps.makeRecorder();
@@ -67,10 +58,7 @@ export function recordChime(deps: RecordDeps): Promise<RecordedChime> {
 				reject(new Error("recording-invalid"));
 				return;
 			}
-			void deps
-				.toDataUrl(blob)
-				.then((dataUrl) => resolve({ dataUrl, mimeType: blob.type }))
-				.catch(reject);
+			resolve({ blob, mimeType: blob.type });
 		};
 		recorder.start();
 		if (deps.stopImmediately) recorder.stop();

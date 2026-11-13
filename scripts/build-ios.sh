@@ -2,6 +2,8 @@
 # Build the iOS app. Simulator by default; set DEVICE=1 (+ DEVELOPMENT_TEAM) for hardware.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# shellcheck source=device.sh
+. "$(dirname "$0")/device.sh"
 
 npm run build >/dev/null
 npx cap sync ios >/dev/null
@@ -11,10 +13,12 @@ SIM="${SIMULATOR:-iPhone 16}"
 
 if [ "${DEVICE:-0}" = "1" ]; then
   : "${DEVELOPMENT_TEAM:?DEVELOPMENT_TEAM is required for a device build (Apple Developer Team ID)}"
-  echo "▶ iOS Device build (Team ${DEVELOPMENT_TEAM})"
+  UDID="$(first_physical_udid)"
+  [ -n "$UDID" ] || { echo "✖ Kein physisches iOS-Geraet per USB verbunden." >&2; exit 1; }
+  echo "▶ iOS Device build (Team ${DEVELOPMENT_TEAM}, UDID ${UDID})"
   xcodebuild -project ios/App/App.xcodeproj -scheme App \
     -configuration Debug -sdk iphoneos \
-    -destination 'generic/platform=iOS' \
+    -destination "platform=iOS,id=$UDID" \
     -derivedDataPath "$DERIVED/device" \
     DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
     CODE_SIGN_STYLE=Automatic \

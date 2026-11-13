@@ -51,6 +51,7 @@ describe("createEntry", () => {
 				chimeSource: ChimeSource.Custom,
 				chimeName: "Mein Ton",
 				chimeDataUrl: "data:audio/mpeg;base64,AAA",
+				extraChime: true,
 			},
 			() => "id-1",
 		);
@@ -64,6 +65,7 @@ describe("createEntry", () => {
 			chimeSource: ChimeSource.Custom,
 			chimeName: "Mein Ton",
 			chimeDataUrl: "data:audio/mpeg;base64,AAA",
+			extraChime: true,
 		});
 	});
 
@@ -80,6 +82,7 @@ describe("createEntry", () => {
 					chimeSource: ChimeSource.Default,
 					chimeName: DEFAULT_CHIME_NAME,
 					chimeDataUrl: "",
+					extraChime: false,
 				},
 				() => `id-${++n}`,
 			);
@@ -154,9 +157,67 @@ describe("loadEntries / saveEntries", () => {
 			chimeSource: ChimeSource.Recorded,
 			chimeName: "Eigene Aufnahme",
 			chimeDataUrl: "data:audio/webm;base64,REC",
+			extraChime: true,
 		});
 		saveEntries([recorded]);
 		expect(loadEntries()).toEqual([recorded]);
+	});
+
+	it("round-trips the extraChime flag through localStorage", () => {
+		const withExtra = draft({ extraChime: true });
+		saveEntries([withExtra]);
+		expect(loadEntries()[0]?.extraChime).toBe(true);
+		saveEntries([draft({ extraChime: false })]);
+		expect(loadEntries()[0]?.extraChime).toBe(false);
+	});
+
+	it("migrates a legacy row with an own chime to extraChime=true (no silent mute)", () => {
+		const legacy = {
+			...draft({ chimeSource: ChimeSource.Custom, chimeDataUrl: "data:audio/mpeg;base64,AAA" }),
+			extraChime: undefined,
+		};
+		localStorage.setItem(StorageKey.Entries, JSON.stringify([legacy]));
+		expect(loadEntries()[0]?.extraChime).toBe(true);
+	});
+
+	it("migrates a legacy row with the default chime to extraChime=false", () => {
+		const legacy = { ...draft(), extraChime: undefined };
+		localStorage.setItem(StorageKey.Entries, JSON.stringify([legacy]));
+		expect(loadEntries()[0]?.extraChime).toBe(false);
+	});
+
+	it("keeps an imported EventKit entry (externalId) across a cold restart", () => {
+		const imported = {
+			...draft({ id: "EK-1", title: "Vom iPhone Kalender", extraChime: false }),
+			externalId: "EK-1",
+		};
+		localStorage.setItem(StorageKey.Entries, JSON.stringify([imported]));
+		expect(loadEntries()).toEqual([imported]);
+	});
+
+	it("keeps a native-import row without the new extraChime flag (legacy device data)", () => {
+		const legacy = {
+			id: "EK-LEGACY",
+			iso: "2026-11-13",
+			time: "10:00",
+			title: "Alt",
+			category: "event",
+			note: "",
+			chimeSource: "default",
+			chimeName: "Standard (Saraba)",
+			chimeDataUrl: "",
+			externalId: "EK-LEGACY",
+		};
+		localStorage.setItem(StorageKey.Entries, JSON.stringify([legacy]));
+		expect(loadEntries()).toHaveLength(1);
+		expect(loadEntries()[0]?.extraChime).toBe(false);
+	});
+
+	it("keeps the imported-holiday flag across save/load", () => {
+		const holiday = draft({ id: "EK-H", isHoliday: true });
+		saveEntries([holiday]);
+		expect(loadEntries()[0]?.isHoliday).toBe(true);
+		expect(loadEntries()[0]).toEqual(holiday);
 	});
 
 	it("survives corrupt JSON", () => {

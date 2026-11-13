@@ -5,6 +5,9 @@ import {
 	EntryCategory,
 	EntryFilter,
 	EntryValidationError,
+	HolidayMode,
+	ListPeriod,
+	PastMode,
 	TabId,
 	Theme,
 } from "./enums";
@@ -61,6 +64,12 @@ export const VALIDATION_MESSAGE: Record<EntryValidationError, string> = {
 
 export const EMPTY_AGENDA_MESSAGE = "Heute keine Termine.";
 export const CHIME_LABEL = "Klingelton";
+export const EXTRA_CHIME_LABEL = "Eigener Klingelton mit ausfuehren";
+export const EXTRA_CHIME_HINT = "Standard-Weckton oder eigene MP3/Aufnahme verwenden.";
+export const EXTRA_CHIME_ON = "Eigener Ton: An";
+export const EXTRA_CHIME_OFF = "Eigener Ton: Aus";
+export const CHIME_NONE_HINT =
+	"Eigener Ton ist an, aber noch kein Ton gewaehlt - es klingelt weiterhin der Standard. Waehle unten eine Quelle.";
 export const CHIME_DEFAULT_LABEL = "Standard";
 export const CHIME_CUSTOM_LABEL = "Eigene MP3";
 export const CHIME_YOUTUBE_LABEL = "YouTube";
@@ -69,6 +78,8 @@ export const CHIME_RECORD_START = "● Aufnehmen";
 export const CHIME_RECORD_STOP = "■ Stopp";
 export const CHIME_RECORD_UNAVAILABLE = "Mikrofon nicht verfuegbar (Browser oder Berechtigung).";
 export const CHIME_RECORD_DENIED = "Mikrofon-Zugriff verweigert.";
+export const CHIME_CONVERT_FAILED =
+	"Konvertierung fehlgeschlagen - der Wecker spielt den Standardton (Vorschau bleibt hörbar).";
 export const CHIME_RECORD_NAME = "Eigene Aufnahme";
 export const CHIME_YOUTUBE_PLACEHOLDER = "https://www.youtube.com/watch?v=...";
 export const CHIME_YOUTUBE_INVALID = "Keine gueltige YouTube-URL.";
@@ -95,6 +106,8 @@ export const ALARM_STATUS_DOT: Record<AlarmStatus, string> = {
 };
 
 export const EMPTY_ALARM_MESSAGE = "Noch keine Weckzeiten. Tippe auf + um eine anzulegen.";
+export const ALARM_CANCEL_LABEL = "Abbrechen";
+export const ALARM_SNOOZE_LABEL = "+";
 export const ADD_ENTRY_LABEL = "Neuer Eintrag";
 export const EDIT_ENTRY_LABEL = "Eintrag bearbeiten";
 export const ADD_ENTRY_SUBMIT = "+ Eintrag anlegen";
@@ -172,6 +185,23 @@ export const CONNECTION_STATE_LABEL: Record<ConnectionState, string> = {
 };
 export const CLOSE_LABEL = "Schliessen";
 export const RETRY_LABEL = "Erneut versuchen";
+
+export const LIST_PERIOD_LABEL: Record<ListPeriod, string> = {
+	[ListPeriod.Day]: "Tag",
+	[ListPeriod.Week]: "Woche",
+	[ListPeriod.Month]: "Monat",
+	[ListPeriod.All]: "Alle",
+};
+export const HOLIDAY_MODE_LABEL: Record<HolidayMode, string> = {
+	[HolidayMode.With]: "Mit Feiertagen",
+	[HolidayMode.Without]: "Ohne Feiertage",
+};
+export const LIST_PERIOD_FILTER_LABEL = "Zeitraum";
+export const ENTRIES_WITH_HOLIDAYS_LABEL = "Feiertage";
+export const PAST_MODE_LABEL: Record<PastMode, string> = {
+	[PastMode.Hide]: "Vergangene aus",
+	[PastMode.Show]: "Vergangene an",
+};
 
 export const EMPTY_LIST_MESSAGE: Record<EntryFilter, string> = {
 	[EntryFilter.All]: "Noch keine Eintraege. Lege oben einen Termin an.",

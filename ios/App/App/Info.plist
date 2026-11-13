@@ -24,8 +24,14 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>UIApplicationSupportsShakeToEdit</key>
+	<false/>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Clock kann Termine mit deinem Geraetekalender abgleichen.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Clock liest und schreibt Wecktermine in deinem Kalender, damit Speichern, Laden und Bearbeiten synchron bleiben.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Clock legt neue Wecktermine in deinem Kalender an.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Clock nimmt einen eigenen Klingelton ueber das Mikrofon auf.</string>
 	<key>NSUserNotificationUsageDescription</key>

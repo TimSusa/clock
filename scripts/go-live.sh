@@ -3,22 +3,24 @@
 # Requires: Xcode signed in with an Apple ID, Developer Mode enabled, trusted USB pairing.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# shellcheck source=device.sh
+. "$(dirname "$0")/device.sh"
 
 : "${DEVELOPMENT_TEAM:?Set DEVELOPMENT_TEAM to your Xcode Personal Team ID}"
 
 echo "▶ Checking for a physical device"
-DEVICES="$(xcrun devicectl list devices 2>/dev/null | awk '/\(UDID\)/ && $0 !~ /simulated/ && $0 ~ /available|connected/ {print $3}' || true)"
-if [ -z "$DEVICES" ]; then
+UDID="$(first_physical_udid)"
+if [ -z "$UDID" ]; then
   echo "✖ No physical iOS device found over USB." >&2
   exit 1
 fi
-echo "✔ Device(s): $DEVICES"
+echo "✔ Device: $UDID"
 
 echo "▶ Building signed device app"
 npm run cap:sync >/dev/null
 xcodebuild -project ios/App/App.xcodeproj -scheme App \
   -configuration Debug -sdk iphoneos \
-  -destination 'generic/platform=iOS' \
+  -destination "platform=iOS,id=$UDID" \
   -derivedDataPath /tmp/clock-derived/device \
   DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
   CODE_SIGN_STYLE=Automatic \
@@ -32,15 +34,11 @@ echo "✔ Build succeeded"
 
 APP="/tmp/clock-derived/device/Build/Products/Debug-iphoneos/App.app"
 echo "▶ Installing on device"
-for udid in $DEVICES; do
-  xcrun devicectl device install app --device "$udid" "$APP"
-done
+xcrun devicectl device install app --device "$UDID" "$APP"
 echo "✔ Installed"
 
 if [ "${LAUNCH:-1}" = "1" ]; then
   echo "▶ Launching"
-  for udid in $DEVICES; do
-    xcrun devicectl device process launch --device "$udid" de.timsusa.clock
-  done
+  xcrun devicectl device process launch --device "$UDID" de.timsusa.clock
   echo "✔ Launched — check your iPhone screen."
 fi

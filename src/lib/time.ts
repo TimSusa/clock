@@ -22,6 +22,11 @@ export function formatLongDate(date: Date, locale: Locale = Locale.German): stri
 	}).format(date);
 }
 
+/** Current local wall-clock time as HH:MM (default for NEW entries). */
+export function currentTimeKey(now: Date = new Date()): string {
+	return `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+}
+
 /** Local calendar date as YYYY-MM-DD (never UTC, avoids off-by-one across timezones). */
 export function isoDateKey(date: Date): string {
 	return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;

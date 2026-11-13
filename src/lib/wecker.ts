@@ -15,6 +15,8 @@ export function buildAlarmRows(entries: readonly CalendarEntry[], now: Date): re
 			status = AlarmStatus.Due;
 		} else if (date !== null && date.getTime() < now.getTime()) {
 			status = AlarmStatus.Past;
+		} else if (entry.iso === dayKey && date !== null && date.getHours() === now.getHours()) {
+			status = AlarmStatus.Upcoming;
 		} else if (entry.iso === dayKey) {
 			status = AlarmStatus.Today;
 		} else {
