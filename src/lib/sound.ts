@@ -1,7 +1,6 @@
-import { DEFAULT_CHIME_URL, MAX_CUSTOM_CHIME_BYTES } from "./constants";
+import { AUDIO_FILE_EXTENSIONS, DEFAULT_CHIME_URL, MAX_CUSTOM_CHIME_BYTES } from "./constants";
 import { ChimeSource } from "./enums";
 import type { CalendarEntry } from "./types";
-import { parseYouTubeUrl, youtubeEmbedUrl } from "./youtube";
 
 export interface AudioFileLike {
 	name: string;
@@ -9,9 +8,11 @@ export interface AudioFileLike {
 	size: number;
 }
 
+/** Any decodable audio file within the size limit; WAV transcoding does the rest. */
 export function isAcceptableAudioFile(file: AudioFileLike): boolean {
-	const isMp3 = /\.mp3$/i.test(file.name) || file.type === "audio/mpeg";
-	return isMp3 && file.size > 0 && file.size <= MAX_CUSTOM_CHIME_BYTES;
+	const byName = AUDIO_FILE_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(`.${ext}`));
+	const byMime = file.type.startsWith("audio/");
+	return (byName || byMime) && file.size > 0 && file.size <= MAX_CUSTOM_CHIME_BYTES;
 }
 
 export type ChimeFields = Pick<CalendarEntry, "chimeSource" | "chimeDataUrl" | "extraChime">;
@@ -23,10 +24,6 @@ export type ChimeFields = Pick<CalendarEntry, "chimeSource" | "chimeDataUrl" | "
  */
 export function resolveChimeUrl(entry: ChimeFields): string {
 	if (!entry.extraChime) return DEFAULT_CHIME_URL;
-	if (entry.chimeSource === ChimeSource.YouTube) {
-		const id = parseYouTubeUrl(entry.chimeDataUrl);
-		return id !== null ? (youtubeEmbedUrl(id) ?? DEFAULT_CHIME_URL) : DEFAULT_CHIME_URL;
-	}
 	return (entry.chimeSource === ChimeSource.Custom || entry.chimeSource === ChimeSource.Recorded) &&
 		entry.chimeDataUrl.length > 0
 		? entry.chimeDataUrl
@@ -66,22 +63,28 @@ export function createAlarmPlayer(
 		pause(): void;
 		play(): Promise<void>;
 		onended: (() => void) | null;
-		onError: (() => void) | null;
+		onerror: (() => void) | null;
 	} = () => new Audio() as never,
 ): AlarmPlayer {
 	let audio: ReturnType<typeof makeAudio> | null = null;
 	let resolvePending: (() => void) | null = null;
 
-	function finish(): void {
-		resolvePending?.();
+	/** Drop the audio state WITHOUT resolving - used on playback errors. */
+	function clear(): void {
 		resolvePending = null;
 		audio = null;
+	}
+
+	/** Normal end or explicit stop: resolve the pending play, then clear. */
+	function finish(): void {
+		resolvePending?.();
+		clear();
 	}
 
 	function stop(): void {
 		if (!audio) return;
 		audio.onended = null;
-		audio.onError = null;
+		audio.onerror = null;
 		audio.pause();
 		finish();
 	}
@@ -94,17 +97,18 @@ export function createAlarmPlayer(
 			current.src = url;
 			return new Promise<void>((resolve, reject) => {
 				resolvePending = resolve;
+				const fail = (): void => {
+					if (audio !== current) return;
+					current.onended = null;
+					current.onerror = null;
+					clear();
+					reject(new Error("audio-playback-failed"));
+				};
 				current.onended = () => {
 					if (audio === current) finish();
 				};
-				current.onError = () => {
-					if (audio === current) finish();
-					reject(new Error("audio-playback-failed"));
-				};
-				void current.play().catch(() => {
-					if (audio === current) finish();
-					reject(new Error("audio-playback-failed"));
-				});
+				current.onerror = fail;
+				void current.play().catch(fail);
 			});
 		},
 		stop,

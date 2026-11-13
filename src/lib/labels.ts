@@ -71,8 +71,7 @@ export const EXTRA_CHIME_OFF = "Eigener Ton: Aus";
 export const CHIME_NONE_HINT =
 	"Eigener Ton ist an, aber noch kein Ton gewaehlt - es klingelt weiterhin der Standard. Waehle unten eine Quelle.";
 export const CHIME_DEFAULT_LABEL = "Standard";
-export const CHIME_CUSTOM_LABEL = "Eigene MP3";
-export const CHIME_YOUTUBE_LABEL = "YouTube";
+export const CHIME_CUSTOM_LABEL = "Audio-Datei";
 export const CHIME_RECORD_LABEL = "Aufnahme";
 export const CHIME_RECORD_START = "● Aufnehmen";
 export const CHIME_RECORD_STOP = "■ Stopp";
@@ -81,13 +80,8 @@ export const CHIME_RECORD_DENIED = "Mikrofon-Zugriff verweigert.";
 export const CHIME_CONVERT_FAILED =
 	"Konvertierung fehlgeschlagen - der Wecker spielt den Standardton (Vorschau bleibt hörbar).";
 export const CHIME_RECORD_NAME = "Eigene Aufnahme";
-export const CHIME_YOUTUBE_PLACEHOLDER = "https://www.youtube.com/watch?v=...";
-export const CHIME_YOUTUBE_INVALID = "Keine gueltige YouTube-URL.";
-export const YOUTUBE_EMBED_ORIGIN = "https://www.youtube-nocookie.com/embed/";
-export const CHIME_PICK_LABEL = "MP3 vom Geraet waehlen";
 export const CHIME_PREVIEW_LABEL = "Anhoeren";
-export const CHIME_TOO_LARGE = "Datei zu gross (max. 1,5 MB).";
-export const CHIME_WRONG_TYPE = "Bitte eine MP3-Datei waehlen.";
+export const CHIME_FILE_INVALID = "Audio-Datei ungueltig oder zu gross (max. 1,5 MB).";
 
 export const ALARM_STATUS_LABEL: Record<AlarmStatus, string> = {
 	[AlarmStatus.Due]: "Jetzt faellig",

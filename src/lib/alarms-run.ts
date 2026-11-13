@@ -55,3 +55,13 @@ export function claimAndFire(
 export function firedKeyForDay(now: Date): string {
 	return isoDateKey(now);
 }
+
+/**
+ * Release a claimed id when the user dismisses/snoozes the alarm window.
+ * `firedIds` only protects the 1-s ticker from firing the SAME minute 60x -
+ * it must NOT permanently block an alarm that is triggered again (e.g. the
+ * native notification bringing the app back, or the user re-triggering it).
+ */
+export function releaseFiredId(firedIds: readonly string[], entryId: string): string[] {
+	return firedIds.filter((id) => id !== entryId);
+}

@@ -58,7 +58,7 @@ deploy_ios() {
     return 1
   fi
   local devices
-  devices="$(physical_udids)"
+  devices="$(target_udids)"
   if [ -z "$devices" ]; then
     echo "✖ Kein physisches iOS-Geraet per USB erkannt." >&2
     echo "  Geraet anschliessen, entsperren und 'Diesem Computer vertrauen' bestaetigen." >&2

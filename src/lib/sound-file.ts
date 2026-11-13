@@ -39,9 +39,21 @@ export function soundWritePlan(entry: CalendarEntry): SoundWritePlan | null {
 
 /** Minimal Filesystem shape, injected so tests never need a native bridge. */
 export interface SoundFileSystem {
+	/** Optional: check existence first so mkdir never logs a spurious iOS error. */
+	stat?(options: { path: string; directory: string }): Promise<{ type: string }>;
 	mkdir(options: { path: string; directory: string; recursive: boolean }): Promise<void>;
 	writeFile(options: { path: string; directory: string; data: string }): Promise<unknown>;
 	deleteFile(options: { path: string; directory: string }): Promise<void>;
+}
+
+/**
+ * iOS Capacitor Filesystem.mkdir rejects with OS-PLUG-FILE-0010 "already
+ * exists" even with recursive:true. An existing Sounds folder is exactly what
+ * we want, so only OTHER mkdir failures are real errors.
+ */
+function isExistingDirectoryError(error: unknown): boolean {
+	const e = error as { message?: string; code?: string } | null;
+	return e?.message?.includes("already exists") === true || e?.code === "OS-PLUG-FILE-0010";
 }
 
 /** Write (or refresh) every own chime before notifications are scheduled. */
@@ -51,7 +63,24 @@ export async function writeSoundFiles(
 ): Promise<void> {
 	const plans = entries.map(soundWritePlan).filter((p): p is SoundWritePlan => p !== null);
 	if (plans.length === 0) return;
-	await fs.mkdir({ path: SOUNDS_FOLDER, directory: SOUND_DIRECTORY, recursive: true });
+	// Prefer stat(): iOS Capacitor logs an ERROR for mkdir on an existing
+	// folder even when we catch it. Skip mkdir entirely when Sounds is there.
+	let exists = false;
+	if (fs.stat) {
+		try {
+			await fs.stat({ path: SOUNDS_FOLDER, directory: SOUND_DIRECTORY });
+			exists = true;
+		} catch {
+			/* missing folder -> create below */
+		}
+	}
+	if (!exists) {
+		try {
+			await fs.mkdir({ path: SOUNDS_FOLDER, directory: SOUND_DIRECTORY, recursive: true });
+		} catch (error) {
+			if (!isExistingDirectoryError(error)) throw error;
+		}
+	}
 	for (const plan of plans) {
 		await fs.writeFile(plan);
 	}

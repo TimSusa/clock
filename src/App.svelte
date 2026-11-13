@@ -10,7 +10,7 @@ import {
 	LOCAL_NOTIFICATION_RECEIVED,
 	registerAlarmActions,
 } from "./lib/alarm-bridge";
-import { claimAndFire, firedKeyForDay } from "./lib/alarms-run";
+import { claimAndFire, firedKeyForDay, releaseFiredId } from "./lib/alarms-run";
 import { mergeImportedEvents } from "./lib/calendar-import";
 import type { CalendarPort } from "./lib/calendar-port";
 import { syncToCalendar } from "./lib/calendar-port";
@@ -229,20 +229,27 @@ function raiseAlarm(entryId: string): void {
 	const entry = entries.find((e) => e.id === entryId);
 	if (!entry) return;
 	activeAlarm = entry;
-	if (!firedIds.includes(entryId)) firedIds = [...firedIds, entryId];
+	// `firedIds` is claimed ONLY by claimAndFire() in the same tick (one source
+	// of truth). Do not claim here: it would permanently block a second trigger
+	// of the same alarm on the same day.
 }
 
 function handleAlarmAction(entryId: string, action: AlarmActionId): void {
 	if (action === AlarmActionId.Snooze) entries = applyAlarmAction(entries, entryId, action);
 	activeAlarm = undefined;
+	firedIds = releaseFiredId(firedIds, entryId);
 }
 
 function dismissAlarm(): void {
+	if (activeAlarm) firedIds = releaseFiredId(firedIds, activeAlarm.id);
 	activeAlarm = undefined;
 }
 
 function snoozeAlarm(): void {
-	if (activeAlarm) entries = applyAlarmAction(entries, activeAlarm.id, AlarmActionId.Snooze);
+	if (activeAlarm) {
+		firedIds = releaseFiredId(firedIds, activeAlarm.id);
+		entries = applyAlarmAction(entries, activeAlarm.id, AlarmActionId.Snooze);
+	}
 	activeAlarm = undefined;
 }
 

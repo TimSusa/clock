@@ -11,6 +11,13 @@ const WEB_NO_OP: SoundFileSystem = {
 
 function nativeSoundFileSystem(): SoundFileSystem {
 	return {
+		async stat(options) {
+			const result = await Filesystem.stat({
+				path: options.path,
+				directory: Directory.Library,
+			});
+			return { type: result.type };
+		},
 		async mkdir(options) {
 			await Filesystem.mkdir({
 				path: options.path,

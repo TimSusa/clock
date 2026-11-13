@@ -3,7 +3,7 @@ import { makeEntry } from "../test/fixtures";
 import { ChimeSource } from "./enums";
 import { soundFileNameFor } from "./notification-plan";
 import type { SoundFileSystem } from "./sound-file";
-import { armSoundFiles, base64FromDataUrl, soundWritePlan } from "./sound-file";
+import { armSoundFiles, base64FromDataUrl, soundWritePlan, writeSoundFiles } from "./sound-file";
 
 describe("base64FromDataUrl", () => {
 	it("strips the data-url prefix and keeps only the payload", () => {
@@ -109,5 +109,46 @@ describe("soundWritePlan", () => {
 			chimeDataUrl: "not-a-data-url",
 		});
 		expect(soundWritePlan(entry)).toBeNull();
+	});
+});
+
+describe("writeSoundFiles (iOS OS-PLUG-FILE-0010)", () => {
+	it("STILL writes the chime when Library/Sounds already exists (2nd launch)", async () => {
+		// Real device log: Capacitor Filesystem.mkdir rejects with
+		// OS-PLUG-FILE-0010 "already exists" even with recursive:true on iOS.
+		// That must NOT abort the writeFile that follows - otherwise the own
+		// recording is never refreshed and stays silent on every later alarm.
+		const alreadyExists = Object.assign(new Error("already exists"), {
+			code: "OS-PLUG-FILE-0010",
+		});
+		const fs: SoundFileSystem = {
+			mkdir: vi.fn().mockRejectedValue(alreadyExists),
+			writeFile: vi.fn().mockResolvedValue(undefined),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+		};
+		const entry = makeEntry({
+			id: "rec-2",
+			chimeSource: ChimeSource.Recorded,
+			chimeDataUrl: OWN_WAV,
+			extraChime: true,
+		});
+		await writeSoundFiles(fs, [entry]);
+		expect(fs.writeFile).toHaveBeenCalledTimes(1);
+	});
+
+	it("still propagates a REAL mkdir failure (permission denied)", async () => {
+		const fs: SoundFileSystem = {
+			mkdir: vi.fn().mockRejectedValue(new Error("permission-denied")),
+			writeFile: vi.fn().mockResolvedValue(undefined),
+			deleteFile: vi.fn().mockResolvedValue(undefined),
+		};
+		const entry = makeEntry({
+			id: "rec-3",
+			chimeSource: ChimeSource.Recorded,
+			chimeDataUrl: OWN_WAV,
+			extraChime: true,
+		});
+		await expect(writeSoundFiles(fs, [entry])).rejects.toThrow("permission-denied");
+		expect(fs.writeFile).not.toHaveBeenCalled();
 	});
 });

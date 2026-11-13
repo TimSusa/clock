@@ -45,11 +45,13 @@ vi.mock("./lib/native-calendar-port", async (importOriginal) => {
 
 describe("App - native storage init", () => {
 	it("starts in a loading state and shows stored entries after the async init", async () => {
+		// A future time keeps the entry visible under the default "past = hidden" filter.
+		const future = new Date(Date.now() + 60 * 60 * 1000);
+		const iso = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, "0")}-${String(future.getDate()).padStart(2, "0")}`;
+		const time = `${String(future.getHours()).padStart(2, "0")}:${String(future.getMinutes()).padStart(2, "0")}`;
 		data.set(
 			StorageKey.Entries,
-			JSON.stringify([
-				makeEntry({ id: "native-init", title: "Nativ geladen", iso: "2026-11-13", time: "18:00" }),
-			]),
+			JSON.stringify([makeEntry({ id: "native-init", title: "Nativ geladen", iso, time })]),
 		);
 		render(App);
 		expect(screen.getByTestId("storage-loading")).toBeInTheDocument();

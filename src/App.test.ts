@@ -481,59 +481,49 @@ describe("App - home view", () => {
 		expect(stored[0]?.extraChime).toBe(true);
 	});
 
-	it("keeps a chosen own chime when the toggle is switched off and on again", async () => {
+	it("keeps the chosen own chime when the extra-chime toggle is switched off and on again", async () => {
+		const file = new File(["audio"], "Aufnahme.wav", { type: "audio/wav" });
 		render(App);
 		await fireEvent.click(screen.getByTestId("add-entry-toggle"));
 		await fireEvent.click(screen.getByTestId("extra-chime-toggle"));
-		await fireEvent.click(screen.getByTestId("chime-youtube"));
-		await fireEvent.input(screen.getByTestId("chime-youtube-url"), {
-			target: { value: "https://youtu.be/dQw4w9WgXcQ" },
-		});
-		await fireEvent.click(screen.getByTestId("chime-youtube-apply"));
+		await fireEvent.change(screen.getByTestId("chime-file"), { target: { files: [file] } });
+		expect(screen.getByTestId("chime-name")).toHaveTextContent("Aufnahme.wav");
 		await fireEvent.click(screen.getByTestId("extra-chime-toggle"));
 		await fireEvent.click(screen.getByTestId("extra-chime-toggle"));
-		expect(screen.getByTestId("chime-name")).toHaveTextContent("dQw4w9WgXcQ");
+		expect(screen.getByTestId("chime-name")).toHaveTextContent("Aufnahme.wav");
 	});
 
-	it("shows the default chime and lets the user pick a YouTube url", async () => {
+	it("picks a local M4A via the file browser and stores it as a real WAV chime", async () => {
+		const file = new File(["m4a-bytes"], "auf gehts wecker 2.m4a", { type: "audio/mp4" });
 		render(App);
 		await fireEvent.click(screen.getByTestId("add-entry-toggle"));
-		expect(screen.getByTestId("chime-name")).toHaveTextContent("Standard");
 		await fireEvent.click(screen.getByTestId("extra-chime-toggle"));
-		await fireEvent.click(screen.getByTestId("chime-youtube"));
-		expect(screen.getByTestId("chime-youtube-url")).toBeInTheDocument();
-		await fireEvent.input(screen.getByTestId("chime-youtube-url"), {
-			target: { value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+		await fireEvent.change(screen.getByTestId("chime-file"), { target: { files: [file] } });
+		await fireEvent.input(screen.getByTestId("add-entry-title"), {
+			target: { value: "Audio-Datei Test" },
 		});
-		await fireEvent.click(screen.getByTestId("chime-youtube-apply"));
-		expect(screen.getByTestId("chime-name")).toHaveTextContent("dQw4w9WgXcQ");
+		await fireEvent.click(screen.getByTestId("add-entry-submit"));
+		await waitFor(() => {
+			const stored = JSON.parse(localStorage.getItem(StorageKey.Entries) ?? "[]") as Array<{
+				title: string;
+				chimeSource: string;
+				chimeDataUrl: string;
+				chimeName: string;
+			}>;
+			expect(stored[0]?.title).toBe("Audio-Datei Test");
+			expect(stored[0]?.chimeSource).toBe(ChimeSource.Custom);
+			expect(stored[0]?.chimeName).toBe("auf gehts wecker 2.m4a");
+			expect(stored[0]?.chimeDataUrl.startsWith("data:audio/wav;base64,")).toBe(true);
+		});
 	});
 
-	it("rejects an invalid YouTube url", async () => {
+	it("rejects a non-audio file picked through the file browser", async () => {
+		const file = new File(["not audio"], "bild.png", { type: "image/png" });
 		render(App);
 		await fireEvent.click(screen.getByTestId("add-entry-toggle"));
 		await fireEvent.click(screen.getByTestId("extra-chime-toggle"));
-		await fireEvent.click(screen.getByTestId("chime-youtube"));
-		await fireEvent.input(screen.getByTestId("chime-youtube-url"), {
-			target: { value: "https://vimeo.com/123" },
-		});
-		await fireEvent.click(screen.getByTestId("chime-youtube-apply"));
-		expect(screen.getByTestId("chime-error")).toHaveTextContent("Keine gueltige YouTube-URL.");
-	});
-
-	it("toggles the YouTube preview on and off", async () => {
-		render(App);
-		await fireEvent.click(screen.getByTestId("add-entry-toggle"));
-		await fireEvent.click(screen.getByTestId("extra-chime-toggle"));
-		await fireEvent.click(screen.getByTestId("chime-youtube"));
-		await fireEvent.input(screen.getByTestId("chime-youtube-url"), {
-			target: { value: "https://youtu.be/dQw4w9WgXcQ" },
-		});
-		await fireEvent.click(screen.getByTestId("chime-youtube-apply"));
-		await fireEvent.click(screen.getByTestId("chime-preview"));
-		expect(screen.getByTestId("youtube-preview")).toBeInTheDocument();
-		await fireEvent.click(screen.getByTestId("chime-preview"));
-		expect(screen.queryByTestId("youtube-preview")).not.toBeInTheDocument();
+		await fireEvent.change(screen.getByTestId("chime-file"), { target: { files: [file] } });
+		expect(screen.getByTestId("chime-error")).toHaveTextContent("Audio-Datei ungueltig");
 	});
 
 	it("toggles the theme", async () => {

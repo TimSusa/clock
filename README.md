@@ -2,13 +2,13 @@
 
 > A single-list alarm & appointment app where **every event owns its own sound** — built as a production-grade, cross-platform reference project.
 
-[![Stack](https://img.shields.io/badge/Svelte-5-ff3e00)](#tech-stack) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](#tech-stack) [![Tests](https://img.shields.io/badge/tests-401%20passing-brightgreen)](#quality-gates) [![Platforms](https://img.shields.io/badge/Web%20%7C%20iOS%20%7C%20Android-blue)](#mobile-capacitor)
+[![Stack](https://img.shields.io/badge/Svelte-5-ff3e00)](#tech-stack) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](#tech-stack) [![Tests](https://img.shields.io/badge/tests-408%20passing-brightgreen)](#quality-gates) [![Platforms](https://img.shields.io/badge/Web%20%7C%20iOS%20%7C%20Android-blue)](#mobile-capacitor)
 
 ---
 
 ## The idea, in one paragraph
 
-Most calendar apps treat the notification sound as a **global setting**. Clock flips that: a 7:00 workout, a 15:30 dentist appointment and a 24.12 family dinner can each ring differently — a bundled track, an MP3 from the device, a YouTube link, or a recording made with the microphone. One list, one data model, one dialog. That single decision drives the whole architecture: no duplicated "alarm" and "appointment" entities, no tabs, no permanent calendar grid cluttering the screen, no global toggle.
+Most calendar apps treat the notification sound as a **global setting**. Clock flips that: a 7:00 workout, a 15:30 dentist appointment and a 24.12 family dinner can each ring differently — a bundled track, a local audio file from the device, or a recording made with the microphone. One list, one data model, one dialog. That single decision drives the whole architecture: no duplicated "alarm" and "appointment" entities, no tabs, no permanent calendar grid cluttering the screen, no global toggle.
 
 **Who it is for:** anyone who wants to *hear* what is due, not just read it — and, for reviewers, a compact example of how to build a strict-typed, fully tested web app that ships to iOS and Android from one codebase.
 
@@ -19,7 +19,7 @@ Most calendar apps treat the notification sound as a **global setting**. Clock f
 | Capability | What it does | Business value |
 | --- | --- | --- |
 | Unified list | Appointments and wake-up times are the **same** `CalendarEntry`; the calendar grid appears only when a date is picked | One mental model, zero context switching |
-| Per-event chime | Default MP3 / own MP3 / YouTube / microphone recording, previewable before saving | Distinguishable alerts without looking at the screen |
+| Per-event chime | Bundled default / **local audio file (mp3, wav, m4a, aac, ogg, flac, webm)** / microphone recording, previewable before saving | Distinguishable alerts without looking at the screen |
 | Own recording as native alarm sound | The raw `MediaRecorder` blob is handed **directly** to the WAV transcoder (no `data:`-URL round-trip) and written to `Library/Sounds` as real 16-bit PCM WAV; if transcoding fails, the bundled WAV is used and the form says so honestly | Your own voice rings the alarm, and a codec gap can never leave it silently muted |
 | Click-to-edit | Tapping a row reopens the same dialog in edit mode | Fast correction, no duplicate records |
 | Auto internal export | ICS text + readable summary regenerate on every change, no button, no confirmation | Always-current data for copy/paste or downstream sync |
@@ -60,7 +60,7 @@ Scripts: `dev`, `build`, `preview`, `test`, `test:watch`, `typecheck`, `lint`, `
 | UI | Svelte 5 (runes) + Tailwind v4 | Minimal runtime, reactive by default |
 | Language | TypeScript **strict** (`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`) | Errors at compile time, not on device |
 | Lint/format | Biome 2.5.7 | One tool, deterministic output |
-| Tests | Vitest + Testing Library | 401 tests across 49 files |
+| Tests | Vitest + Testing Library | 408 tests across 52 files |
 | Build | Vite 6 | Fast web bundle (~120 kB JS / ~42 kB gzip; last verified 119.99 kB / 41.80 kB) |
 | Mobile | Capacitor 8 (`ios/`, `android/`) | Same web build, native shell, no rewrite |
 
@@ -76,7 +76,7 @@ Pure logic lives in `src/lib/`; components render only. Two factories are the si
 | `time.ts`, `calendar.ts`, `alarm.ts`, `wecker.ts` | Date/time, month grid, minute comparison, status |
 | `entries.ts`, `chime.ts`, `preferences.ts` | Persistence + migration, chime defaults, theme |
 | `ical.ts`, `providers.ts`, `internal-sync.ts`, `bootstrap.ts` | ICS export/import, cloud adapters, auto-export, startup |
-| `sound.ts`, `youtube.ts`, `recording.ts`, `alarms-run.ts`, `notification-plan.ts`, `wav.ts` | Playback, URL validation, mic capture (returns the **raw Blob**), alarm firing, notification planning, **WAV transcoding** (RIFF/PCM 16-bit encoder + `normalizeOwnChime()`) |
+| `sound.ts`, `recording.ts`, `alarms-run.ts`, `notification-plan.ts`, `wav.ts`, `constants.ts` | Playback, audio-file validation, mic capture (returns the **raw Blob**), alarm firing, notification planning, **WAV transcoding** (RIFF/PCM 16-bit encoder + `normalizeOwnChime()`); `AUDIO_FILE_EXTENSIONS` / `AUDIO_FILE_ACCEPT` are the one source for the picker |
 | `sound-file.ts`, `sound-file-native.ts` | Pure `soundWritePlan()` + `soundFilePort()` — **one** platform gate (`isNativeShell()`): native Filesystem writes to `Library/Sounds`, web gets a silent no-op |
 | `calendar-port.ts`, `native-calendar-port.ts`, `calendar-import.ts` | Native calendar interface, EventKit adapter, duplicate-free startup merge |
 | `alarm-actions.ts`, `alarm-bridge.ts`, `components/AlarmDialog.svelte` | Snooze/cancel logic, native action category, foreground alarm dialog |
@@ -95,11 +95,11 @@ Pure logic lives in `src/lib/`; components render only. Two factories are the si
 
 ### Chime behaviour
 
-- Four sources: bundled MP3, device MP3 (≤ 1.5 MB as data URL), validated YouTube URL (privacy-enhanced embed), microphone recording (`MediaRecorder`).
+- Three sources: bundled default, **any local audio file** picked via the native file browser (`<input type="file">`, ≤ 1.5 MB), and microphone recording (`MediaRecorder`). `isAcceptableAudioFile()` accepts mp3/wav/m4a/aac/ogg/flac/webm by extension or any `audio/*` MIME type; `normalizeOwnChime()` transcodes everything to a real WAV, so the picker does not need a native plugin. `pendingChime` makes Save await an in-flight conversion (no empty chime on a fast Save).
 - Preview is a **toggle**: second click, close, save and unmount all stop playback (`createPreviewController`).
 - **Native iOS sound:** `planNotifications()` sets `sound` on every scheduled notification. Capacitor/LocalNotifications emits **no sound on iOS** unless a bundled file is named explicitly — a JS ticker cannot ring while the app is closed. The bundled default is a short 8-second WAV derived from the bundled MP3, shipped in `public/` (git-tracked via a targeted `.gitignore` exception).
 - **Own recordings / MP3s are transcoded to REAL WAV:** `MediaRecorder` produces `audio/webm` (iOS Safari: `audio/mp4`) and picked files are MP3 — but iOS `UNNotificationSound` only plays WAV/CAF/AIFF containers from `Library/Sounds`. `recordChime()` resolves with the **raw Blob**; `applyOwnChime()` in `AddEntryModal.svelte` is the single path for mic + file picker and hands that Blob straight to `normalizeOwnChime()`. `browserWavDeps().decode()` reads it via `Blob.arrayBuffer()` (FileReader fallback for older WebViews), so iOS `audio/mp4` reaches `decodeAudioData()` **unmodified** — the old `Blob → dataURL → Blob → atob` round-trip was the root cause of the silent-alarm bug and is gone. It mixes to mono and encodes RIFF/WAVE 16-bit PCM. On a genuine codec gap the entry keeps the raw clip for the in-app preview, but the form states honestly that the alarm will play the bundled default (no fake `*.wav` is written).
-- **Own recordings on iOS:** a `data:` URL can never be a `UNNotificationSound`. For `ChimeSource.Recorded` / `ChimeSource.Custom`, `soundFileNameFor(id)` derives a stable `clock-chime-<hash>.wav` name; `soundWritePlan()` / `writeSoundFiles()` write the bare Base64 payload into `Library/Sounds` (`@capacitor/filesystem`, `Directory.Library`) **before** `port.reschedule()` runs. `notificationSoundFor()` then references that per-entry file; YouTube / default entries keep the bundled WAV. `soundFilePort()` is the one platform gate: on the web it returns a silent no-op instead of a Filesystem proxy that would reject with `This browser doesn't support IndexedDB`. `removeSoundFile()` cleans up on delete. The Filesystem port is injected, so the logic is tested without a native bridge.
+- **Own recordings on iOS:** a `data:` URL can never be a `UNNotificationSound`. For `ChimeSource.Recorded` / `ChimeSource.Custom`, `soundFileNameFor(id)` derives a stable `clock-chime-<hash>.wav` name; `soundWritePlan()` / `writeSoundFiles()` write the bare Base64 payload into `Library/Sounds` (`@capacitor/filesystem`, `Directory.Library`) **before** `port.reschedule()` runs. `notificationSoundFor()` then references that per-entry file; default entries keep the bundled WAV. `soundFilePort()` is the one platform gate: on the web it returns a silent no-op instead of a Filesystem proxy that would reject with `This browser doesn't support IndexedDB`. `removeSoundFile()` cleans up on delete. The Filesystem port is injected, so the logic is tested without a native bridge.
 - The 1-s ticker fires each due id once per day. `claimAndFire()` claims ids **synchronously before** `await playChime`, so slow audio cannot cause a double ring. No `setTimeout` hacks.
 
 ### Alarm window & actions
@@ -156,7 +156,9 @@ A browser ticker only runs while the page is open. Therefore:
 | `npm run deploy:device` | `scripts/deploy-device.sh` — installs over USB (`PLATFORM=ios\|android\|auto`, `LAUNCH=1` adds a readiness check) |
 | `npm run go-live` | `scripts/go-live.sh` — one-shot: detect device UDID → signed build for that UDID → install → launch (needs `DEVELOPMENT_TEAM`) |
 
-iOS uses `xcrun devicectl`, Android uses `adb install -r`. Both **verify a device is actually connected** and fail with a clear message instead of claiming success. `scripts/device.sh` is the single source of truth for physical-device discovery: a device-specific `-destination "platform=iOS,id=<UDID>"` is required so Xcode creates a provisioning profile that actually contains the connected iPhone (a generic destination reuses a cached portal profile with a stale UDID).
+iOS uses `xcrun devicectl`, Android uses `adb install -r`. Both **verify a device is actually connected** and fail with a clear message instead of claiming success. `scripts/device.sh` is the single source of truth for physical-device discovery: a device-specific `-destination "platform=iOS,id=<UDID>"` is required so Xcode creates a provisioning profile that actually contains the target device (a generic destination reuses a cached portal profile with a stale UDID). `target_udids()` is that single selection point — `first_physical_udid()`, `device_destination()` and `deploy-device.sh` all consume it. When more than one device is connected, set `DEVICE_UDID=<UDID>` to target a specific one; otherwise the first USB device is used.
+
+> **Device-support boundary (verified 2026-11-13):** Xcode 27/CoreDevice (Xcode 15+) talks only to **iOS 17+** devices. An iPad 8 on iPadOS 16.6 is visible and trusted to the legacy USB stack (`idevice_id`, `ideviceinfo`, `ios-deploy`) but appears in `devicectl` as `pairingState: unsupported` with no UDID, is absent from `xcodebuild -showdestinations`, and `xcodebuild -destination 'platform=iOS,id=<UDID>'` fails with "Unable to find a device matching the provided destination specifier". Enabling Developer Mode does **not** change this — it is a version-support limit, not a setting. Update the device to iPadOS 17+ (or use an older Xcode) before attempting a native install. The free Personal-Team profile is also device-locked (`ProvisionedDevices` lists only registered UDIDs), so a legacy `ios-deploy` install fails with `0xe8008015`.
 
 ```bash
 # iOS on a connected iPhone (once Xcode is signed in with your Apple ID)
@@ -165,6 +167,9 @@ PLATFORM=ios LAUNCH=1 npm run deploy:device
 
 # One-shot: build for the connected UDID, install, launch
 DEVELOPMENT_TEAM=<YOUR_TEAM_ID> npm run go-live
+
+# Target a specific device (e.g. an iPad) when more than one is connected
+DEVELOPMENT_TEAM=<YOUR_TEAM_ID> DEVICE_UDID=<IPAD_UDID> npm run go-live
 
 # Android (after installing the Android SDK)
 export ANDROID_HOME="$HOME/Library/Android/sdk"
@@ -180,12 +185,12 @@ PLATFORM=android npm run deploy:device
 
 | Check | Result |
 | --- | --- |
-| `npm run lint` (Biome) | 0 errors, 0 warnings (111 files) |
+| `npm run lint` (Biome) | 0 errors, 0 warnings (113 files) |
 | `npm run typecheck` (`tsc` + `svelte-check`) | 0 errors, 0 warnings |
-| `npm run test` | **401 / 401 passing** (49 files) |
+| `npm run test` | **408 / 408 passing** (52 files) |
 | `npm run build` | succeeds (119.99 kB JS / 41.80 kB gzip) |
 | `hermes verify --json` | `ok: true` — bootstrap/build/typecheck/test/lint all EXIT 0, runtime boot ready (HTTP 200) |
-| Live browser YouTube test | `https://www.youtube.com/watch?v=SYlxrefp8ao` → `♪ YouTube SYlxrefp8ao`, 0 errors; mobile share links with tracking/text also accepted |
+| Local audio file browser | E2E test: picking a local `.m4a` stores a real `data:audio/wav;base64,...` chime; non-audio files are rejected with a clear error; 0 JS errors |
 | `npm run cap:sync` | Capacitor plugins synced for iOS + Android; device log shows LocalNotifications, CapacitorCalendar, Preferences and Filesystem bridges |
 | Native storage on device | `Preferences get`/`set` in the startup log, `PrivacyInfo.xcprivacy` bundled, 0 JS errors |
 | `npm run build:ios` | `BUILD SUCCEEDED` on iPhone simulator and on the connected iPhone 14 Pro |
@@ -197,6 +202,8 @@ PLATFORM=android npm run deploy:device
 | Live browser holiday test | imported "Volkstrauertag" (`isHoliday`) gets a ★ badge and disappears from **list and ticker** under "Ohne Feiertage", 0 JS errors |
 | Live browser initial/persistence test | fresh browser shows Day + Ohne Feiertage; changed selection (Woche + Mit Feiertagen) survives a reload, 0 JS errors |
 | Live browser audio path | iOS `audio/mp4` bytes reach `decodeAudioData()` unchanged (`bytesMatch: true`), web `soundFilePort()` resolves all 3 calls silently, 0 JS errors |
+| Alarm re-trigger (regression) | App-level test: the SAME alarm with an own recording plays again on a second trigger after Cancel, while 3 ticks in one minute still play only once; 0 JS errors |
+| iOS `Library/Sounds` re-write | Device log exposed `OS-PLUG-FILE-0010 "already exists"` on every launch after the first; `stat()` now skips `mkdir` on an existing folder, a real `mkdir` failure still propagates, and `writeFile` runs. Device counter-check: `stat` 1×, `writeFile` 8×, 0 errors after 6 MP4→WAV migrations |
 
 `npm run verify` runs the full chain in one command. Work is **not committed before live verification and sign-off**.
 
@@ -210,32 +217,22 @@ PLATFORM=android npm run deploy:device
 
 ---
 
-## Architecture decisions (evaluated)
+## Architecture decisions
 
-Recorded so the reasoning is not lost; see also the device-verified alarm behaviour above.
+| Area | Implementation |
+| --- | --- |
+| Persistence | `storage.ts` → `@capacitor/preferences` (`UserDefaults`/`SharedPreferences`), one-time legacy migration, `PrivacyInfo.xcprivacy` |
+| Alarms | `@capacitor/local-notifications` with `presentationOptions`, `timeSensitive`, `foreground`; `getPending()` cleanup is fire-and-forget |
+| Calendar | `@ebarooni/capacitor-calendar` via one `CalendarPort` (EventKit), duplicate-free import + write-back sync |
+| Own audio | Native `<input type="file">` → `normalizeOwnChime()` → real WAV in `Library/Sounds`; no native audio plugin |
 
-| Question | Decision | Reason |
-| --- | --- | --- |
-| Capacitor Core iOS/Android API | **No** | Swift/Java bridge for writing *own* plugins. Local Notifications, Calendar, Filesystem already cover everything; a custom plugin would add two native codebases for zero gain |
-| `localStorage` | **DONE: `@capacitor/preferences`** | Capacitor documents WebView storage as *transient* — iOS may evict it under disk pressure. All 5 `StorageKey`s now go through `storage.ts` → `UserDefaults`/`SharedPreferences`, with a one-time legacy migration and `PrivacyInfo.xcprivacy` (`CA92.1`). Device-verified: `Preferences get`/`set` in the startup log, 0 errors |
-| `@capacitor-community/sqlite` | **No** | Actively maintained, but SQL + `sql-wasm.wasm` + COOP/COEP + no SPM = more code, not less. 5 flat keys need no database (YAGNI) |
-| Own calendar plugin / another calendar plugin | **No** | `@ebarooni/capacitor-calendar` ^8.10.0 already talks to EventKit without Ionic; a swap brings no new capability |
-| Push Notifications | **No** | APNs/FCM/server/device token for a purely local, offline wake-up time is the wrong tool and a new failure source |
-| Local Notifications | **Yes** | `presentationOptions` + `timeSensitive` + `foreground` are configured; `getPending()` is fire-and-forget so a hanging call can never block `schedule()` |
-| `.critical` alerts | **Not possible** | Needs Apple's `com.apple.developer.usernotifications.critical-alerts` entitlement (health/safety/emergency only). `timeSensitive` therefore still respects the mute switch — a platform limit, not a bug |
-
-**Implemented:** `StoragePort` + legacy migration + `PrivacyInfo.xcprivacy` + device verification.
-**Deliberately NOT implemented (YAGNI, honest):** moving `chimeDataUrl` (up to 1.5 MB per entry) out of the JSON into `Library/Sounds`. It is referenced by 7 production paths (foreground playback, YouTube URLs, sound-write plan, form, export), so replacing it means rewriting all of them plus migrating existing embedded audio — with a real risk of silently muting users' own recordings. No failing behaviour has been observed, and `UserDefaults` has no 5 MB hard limit. Revisit only if entries actually grow or storage warnings appear.
-
-**Capawesome plugins (github.com/capawesome-team/capacitor-plugins) — bewertet, spart kein Code:** 0× JA, 3× „später", 6× NEIN. All plugins *add* features (app-update, badge, file-picker, biometrics, secure-preferences, sqlite, vault, alarm, android-dark-mode) instead of replacing our own code; the Insiders SDKs are paid. `@capawesome/capacitor-alarm` (AlarmKit, iOS 26+) would create a **second data store** and is Android-fire-and-forget — not a replacement for Local Notifications. The real lever remains `checkExactNotificationSetting()` / `USE_EXACT_ALARM` on Android.
-
-**Native audio-recorder plugins (Cap-go / Capawesome Audio Recorder) — NEIN (evaluated 2026-11-13):** two *different* packages (`@capgo/capacitor-audio-recorder`, MPL-2.0/free vs. `@capawesome-team/capacitor-audio-recorder`, paid Insiders). Both output **only AAC/M4A** (`audio/mp4`) — exactly the format our `decodeAudioData` path struggled with — and Apple's `UNNotificationSound` accepts no AAC/M4A (only Linear PCM / MA4 / µLaw / aLaw in `.wav`/`.aiff`/`.caf`, < 30 s). They replace the *capture* source, not the *transcoding*: `wav.ts` would stay 100 % necessary, so **zero code saved at the bug**, plus a native dependency, `cap sync`, `NSMicrophoneUsageDescription` and a permissions flow. Background recording / pause / amplitude / crash-safety are overkill for a < 30 s foreground clip. The real fix was removing the `Blob → dataURL → Blob` round-trip (see above). Revisit only if genuine background recording is ever needed — then Cap-go, never Capawesome, and still keep `wav.ts`.
+`timeSensitive` respects the iOS mute switch — a platform limit, not a bug.
 
 ---
 
 ## Roadmap / known limits
 
-- End-to-end hardware test of a scheduled notification firing at its wake-up time with the app closed — especially with a **self-recorded** chime and the **Cancel/+15min** buttons. The `Library/Sounds` write path is unit-, browser- and bundle-verified; the last missing step is creating one real recording on the iPhone so the device log shows `Filesystem.writeFile`.
+- End-to-end hardware test of a scheduled notification firing at its wake-up time with the app closed — especially with a **self-recorded** chime and the **Cancel/+15min** buttons. The `Library/Sounds` write path is verified on device (`writeFile` 8×, 0 errors).
 - ~~Confirm on device that existing EventKit events appear after startup without duplicates.~~ **Verified on iPhone 14 Pro:** recurring EventKit series imported, no `each_key_duplicate`, app process running (PID 2481), 0 JS errors in syslog.
 - Live Google/Outlook sync verification once OAuth client IDs exist.
 - Android build verification once the SDK is installed.

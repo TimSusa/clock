@@ -2,7 +2,7 @@
 import { onDestroy } from "svelte";
 import { buildMonthGrid, shiftMonth } from "../lib/calendar";
 import { defaultChime } from "../lib/chime";
-import { DEFAULT_CHIME_NAME } from "../lib/constants";
+import { AUDIO_FILE_ACCEPT, DEFAULT_CHIME_NAME } from "../lib/constants";
 import { createEntry, validateDraft } from "../lib/entries";
 import { ChimeSource, EntryCategory, EntryValidationError, Month } from "../lib/enums";
 import {
@@ -17,6 +17,7 @@ import {
 	CHIME_CONVERT_FAILED,
 	CHIME_CUSTOM_LABEL,
 	CHIME_DEFAULT_LABEL,
+	CHIME_FILE_INVALID,
 	CHIME_LABEL,
 	CHIME_NONE_HINT,
 	CHIME_PREVIEW_LABEL,
@@ -26,11 +27,6 @@ import {
 	CHIME_RECORD_START,
 	CHIME_RECORD_STOP,
 	CHIME_RECORD_UNAVAILABLE,
-	CHIME_TOO_LARGE,
-	CHIME_WRONG_TYPE,
-	CHIME_YOUTUBE_INVALID,
-	CHIME_YOUTUBE_LABEL,
-	CHIME_YOUTUBE_PLACEHOLDER,
 	CLOSE_LABEL,
 	EDIT_ENTRY_HINT,
 	EDIT_ENTRY_LABEL,
@@ -50,7 +46,6 @@ import { createPreviewController, isAcceptableAudioFile, resolveChimeUrl } from 
 import { currentTimeKey, parseIsoDate } from "../lib/time";
 import type { CalendarEntry, MonthGrid } from "../lib/types";
 import { blobToDataUrl, browserWavDeps, normalizeOwnChime } from "../lib/wav";
-import { parseYouTubeUrl, youtubeEmbedUrl } from "../lib/youtube";
 import CalendarGrid from "./CalendarGrid.svelte";
 
 interface Props {
@@ -96,10 +91,8 @@ let chimeName: string = $state(initial?.chimeName ?? DEFAULT_CHIME_NAME);
 let chimeDataUrl: string = $state(initial?.chimeDataUrl ?? "");
 let chimeError = $state("");
 let chimeFallbackHint = $state("");
-let youtubeInput: string = $state(
-	initial?.chimeSource === ChimeSource.YouTube ? (initial?.chimeDataUrl ?? "") : "",
-);
-let youtubePreviewId: string | null = $state(null);
+/** In-flight file conversion; handleSubmit awaits it so a fast Save never stores an empty chime. */
+let pendingChime: Promise<void> | null = null;
 let isRecording = $state(false);
 let pendingStop = false;
 let activeRecorder: RecorderLike | null = null;
@@ -127,11 +120,13 @@ let viewMonth: Month = $state(initialDate.getMonth() as Month);
 
 const grid: MonthGrid = $derived(buildMonthGrid(viewYear, viewMonth, new Date()));
 
-function handleSubmit(event: SubmitEvent): void {
+async function handleSubmit(event: SubmitEvent): Promise<void> {
 	event.preventDefault();
-	if (chimeSource === ChimeSource.YouTube && parseYouTubeUrl(chimeDataUrl) === null) {
-		chimeError = CHIME_YOUTUBE_INVALID;
-		return;
+	// A picked file is transcoded asynchronously. Await it before building the
+	// draft, otherwise a quick Save would persist an empty chime silently.
+	if (pendingChime) {
+		await pendingChime;
+		pendingChime = null;
 	}
 	const draft = createEntry({
 		iso: date,
@@ -150,7 +145,6 @@ function handleSubmit(event: SubmitEvent): void {
 		return;
 	}
 	preview.stop();
-	youtubePreviewId = null;
 	releaseRecorder();
 	if (initial) {
 		const edited: CalendarEntry = { ...draft, id: initial.id };
@@ -165,14 +159,12 @@ function handleSubmit(event: SubmitEvent): void {
 
 function closeModal(): void {
 	preview.stop();
-	youtubePreviewId = null;
 	releaseRecorder();
 	onClose();
 }
 
 function selectDefaultChime(): void {
 	preview.stop();
-	youtubePreviewId = null;
 	chimeSource = ChimeSource.Default;
 	chimeName = DEFAULT_CHIME_NAME;
 	chimeDataUrl = "";
@@ -202,7 +194,6 @@ async function applyOwnChime(blob: Blob): Promise<void> {
 
 async function startRecording(): Promise<void> {
 	preview.stop();
-	youtubePreviewId = null;
 	chimeError = "";
 	chimeFallbackHint = "";
 
@@ -235,7 +226,7 @@ async function startRecording(): Promise<void> {
 			...(pendingStop ? { stopImmediately: true } : {}),
 		});
 		if (!isAcceptableRecording(blob)) {
-			chimeError = CHIME_TOO_LARGE;
+			chimeError = CHIME_FILE_INVALID;
 		} else {
 			await applyOwnChime(blob);
 			chimeSource = ChimeSource.Recorded;
@@ -263,49 +254,20 @@ async function handleChimeFile(event: Event): Promise<void> {
 	const file = input.files?.[0];
 	if (!file) return;
 	preview.stop();
-	youtubePreviewId = null;
-	if (!/\.mp3$/i.test(file.name) && file.type !== "audio/mpeg") {
-		chimeError = CHIME_WRONG_TYPE;
-		return;
-	}
 	if (!isAcceptableAudioFile(file)) {
-		chimeError = CHIME_TOO_LARGE;
+		chimeError = CHIME_FILE_INVALID;
 		return;
 	}
 	chimeSource = ChimeSource.Custom;
 	chimeName = file.name;
-	await applyOwnChime(file);
+	pendingChime = applyOwnChime(file);
+	await pendingChime;
+	pendingChime = null;
 	input.value = "";
 }
 
-function applyYouTube(): void {
-	preview.stop();
-	const id = parseYouTubeUrl(youtubeInput);
-	if (id === null) {
-		chimeError = CHIME_YOUTUBE_INVALID;
-		youtubePreviewId = null;
-		return;
-	}
-	chimeSource = ChimeSource.YouTube;
-	chimeName = `YouTube ${id}`;
-	chimeDataUrl = youtubeInput.trim();
-	chimeError = "";
-	chimeFallbackHint = "";
-}
-
-function toggleYoutubePreview(): void {
-	const id = parseYouTubeUrl(chimeDataUrl);
-	if (id === null) return;
-	preview.stop();
-	youtubePreviewId = youtubePreviewId === id ? null : id;
-}
-
-async function previewChime(): Promise<void> {
-	if (chimeSource === ChimeSource.YouTube) {
-		toggleYoutubePreview();
-		return;
-	}
-	await preview.toggle(resolveChimeUrl({ chimeSource, chimeDataUrl, extraChime }));
+function previewChime(): void {
+	void preview.toggle(resolveChimeUrl({ chimeSource, chimeDataUrl, extraChime }));
 }
 
 function handleKeydown(event: KeyboardEvent): void {
@@ -467,103 +429,57 @@ function pickDate(iso: string): void {
 							{CHIME_NONE_HINT}
 						</p>
 					{/if}
-				<div class="mb-2 flex flex-wrap gap-1">
-					<button
-						type="button"
-						data-testid="chime-default"
-						aria-pressed={chimeSource === ChimeSource.Default}
-						onclick={selectDefaultChime}
-						class="h-9 rounded-lg px-3 text-xs font-medium transition-colors {chimeSource === ChimeSource.Default
-							? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-							: 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'}"
-					>
-						{CHIME_DEFAULT_LABEL}
-					</button>
-					<label
-						data-testid="chime-custom"
-						class="flex h-9 cursor-pointer items-center rounded-lg px-3 text-xs font-medium transition-colors {chimeSource === ChimeSource.Custom
-							? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-							: 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'}"
-					>
-						{CHIME_CUSTOM_LABEL}
-						<input
-							data-testid="chime-file"
-							type="file"
-							accept=".mp3,audio/mpeg"
-							onchange={handleChimeFile}
-							class="sr-only"
-						/>
-					</label>
-					<button
-						type="button"
-						data-testid="chime-youtube"
-						aria-pressed={chimeSource === ChimeSource.YouTube}
-						onclick={() => {
-							chimeSource = ChimeSource.YouTube;
-							chimeError = "";
-	chimeFallbackHint = "";
-						}}
-						class="h-9 rounded-lg px-3 text-xs font-medium transition-colors {chimeSource === ChimeSource.YouTube
-							? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-							: 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'}"
-					>
-						{CHIME_YOUTUBE_LABEL}
-					</button>
-					<button
-						type="button"
-						data-testid="chime-record"
-						aria-label={CHIME_RECORD_LABEL}
-						aria-pressed={isRecording || chimeSource === ChimeSource.Recorded}
-						onclick={toggleRecording}
-						class="h-9 rounded-lg px-3 text-xs font-medium transition-colors {isRecording
-							? 'bg-rose-600 text-white'
-							: chimeSource === ChimeSource.Recorded
-								? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-								: 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'}"
-					>
-						{isRecording ? CHIME_RECORD_STOP : CHIME_RECORD_START}
-					</button>
-					<button
-						type="button"
-						data-testid="chime-preview"
-						aria-pressed={preview.isPlaying() || youtubePreviewId !== null}
-						onclick={previewChime}
-						class="h-9 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-					>
-						{CHIME_PREVIEW_LABEL}
-					</button>
-				</div>
-				{/if}
-
-				{#if extraChime && chimeSource === ChimeSource.YouTube}
-					<div class="mb-2 flex gap-2">
-						<input
-							data-testid="chime-youtube-url"
-							type="url"
-							placeholder={CHIME_YOUTUBE_PLACEHOLDER}
-							bind:value={youtubeInput}
-							class="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-						/>
+					<div class="mb-2 flex flex-wrap gap-1">
 						<button
 							type="button"
-							data-testid="chime-youtube-apply"
-							onclick={applyYouTube}
-							class="h-10 shrink-0 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+							data-testid="chime-default"
+							aria-pressed={chimeSource === ChimeSource.Default}
+							onclick={selectDefaultChime}
+							class="h-9 rounded-lg px-3 text-xs font-medium transition-colors {chimeSource === ChimeSource.Default
+								? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+								: 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'}"
 						>
-							{CHIME_YOUTUBE_LABEL}
+							{CHIME_DEFAULT_LABEL}
+						</button>
+						<label
+							data-testid="chime-custom"
+							class="flex h-9 cursor-pointer items-center rounded-lg px-3 text-xs font-medium transition-colors {chimeSource === ChimeSource.Custom
+								? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+								: 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'}"
+						>
+							{CHIME_CUSTOM_LABEL}
+							<input
+								data-testid="chime-file"
+								type="file"
+								accept={AUDIO_FILE_ACCEPT}
+								onchange={handleChimeFile}
+								class="sr-only"
+							/>
+						</label>
+						<button
+							type="button"
+							data-testid="chime-record"
+							aria-label={CHIME_RECORD_LABEL}
+							aria-pressed={isRecording || chimeSource === ChimeSource.Recorded}
+							onclick={toggleRecording}
+							class="h-9 rounded-lg px-3 text-xs font-medium transition-colors {isRecording
+								? 'bg-rose-600 text-white'
+								: chimeSource === ChimeSource.Recorded
+									? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+									: 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'}"
+						>
+							{isRecording ? CHIME_RECORD_STOP : CHIME_RECORD_START}
+						</button>
+						<button
+							type="button"
+							data-testid="chime-preview"
+							aria-pressed={preview.isPlaying()}
+							onclick={previewChime}
+							class="h-9 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+						>
+							{CHIME_PREVIEW_LABEL}
 						</button>
 					</div>
-					{#if youtubePreviewId !== null && youtubeEmbedUrl(youtubePreviewId) !== null}
-						<div data-testid="youtube-preview" class="mb-2 aspect-video w-full overflow-hidden rounded-lg">
-							<iframe
-								title={CHIME_YOUTUBE_LABEL}
-								src={youtubeEmbedUrl(youtubePreviewId) ?? ""}
-								allow="autoplay; encrypted-media"
-								allowfullscreen
-								class="h-full w-full"
-							></iframe>
-						</div>
-					{/if}
 				{/if}
 
 				<p data-testid="chime-name" class="mb-1 truncate text-xs text-slate-500 dark:text-slate-400">

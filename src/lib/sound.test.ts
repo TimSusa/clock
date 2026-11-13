@@ -64,7 +64,7 @@ describe("createAlarmPlayer", () => {
 			pause: vi.fn(),
 			play: vi.fn().mockResolvedValue(undefined),
 			onended: null as null | (() => void),
-			onError: null as null | (() => void),
+			onerror: null as null | (() => void),
 		};
 	}
 
@@ -96,19 +96,35 @@ describe("createAlarmPlayer", () => {
 		await Promise.resolve();
 		expect(first.pause).toHaveBeenCalledTimes(1);
 	});
+
+	it("binds the REAL onerror handler so a failed own recording clears the player", async () => {
+		const audio = fakeAudio();
+		audio.play.mockRejectedValue(new Error("codec-gap"));
+		const player = createAlarmPlayer(() => audio as never);
+		await expect(player.play("data:audio/mp4;base64,QUJD")).rejects.toThrow(
+			"audio-playback-failed",
+		);
+		expect(player.isPlaying()).toBe(false);
+	});
 });
 
 describe("isAcceptableAudioFile", () => {
-	it("accepts an mp3 within the size limit", () => {
-		expect(isAcceptableAudioFile({ name: "a.mp3", type: "audio/mpeg", size: 1000 })).toBe(true);
+	it.each([
+		["a.mp3", "audio/mpeg"],
+		["song.MP3", ""],
+		["Aufnahme.wav", "audio/wav"],
+		["clip.m4a", "audio/mp4"],
+		["voice.aac", "audio/aac"],
+		["track.ogg", "audio/ogg"],
+		["master.flac", "audio/flac"],
+		["rec.webm", "audio/webm"],
+	])("accepts playable audio %s (%s)", (name, type) => {
+		expect(isAcceptableAudioFile({ name, type, size: 1000 })).toBe(true);
 	});
 
-	it("accepts an mp3 by extension when the type is empty", () => {
-		expect(isAcceptableAudioFile({ name: "song.MP3", type: "", size: 1000 })).toBe(true);
-	});
-
-	it("rejects non-mp3 files", () => {
-		expect(isAcceptableAudioFile({ name: "a.wav", type: "audio/wav", size: 1000 })).toBe(false);
+	it("rejects a non-audio file even with an audio-ish name", () => {
+		expect(isAcceptableAudioFile({ name: "a.png", type: "image/png", size: 1000 })).toBe(false);
+		expect(isAcceptableAudioFile({ name: "note.txt", type: "text/plain", size: 1000 })).toBe(false);
 	});
 
 	it("rejects files above the size limit", () => {

@@ -73,12 +73,6 @@ describe("notificationSoundFor", () => {
 			),
 		).toBe("chime-notification.wav");
 	});
-
-	it("keeps the bundled short chime for a YouTube link (no local audio file)", () => {
-		expect(notificationSoundFor(makeEntry({ chimeSource: ChimeSource.YouTube }))).toBe(
-			"chime-notification.wav",
-		);
-	});
 });
 
 describe("planNotifications — iOS needs an explicit sound", () => {

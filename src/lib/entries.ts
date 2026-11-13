@@ -6,7 +6,6 @@ import { ChimeSource, EntryCategory, EntryValidationError, StorageKey } from "./
 import { newEntryId } from "./ids";
 import { readCached, writeCached } from "./storage";
 import type { CalendarEntry } from "./types";
-import { parseYouTubeUrl } from "./youtube";
 
 export interface EntryDraft {
 	iso: string;
@@ -44,25 +43,17 @@ function normalizeEntry(value: unknown): CalendarEntry | null {
 		(e.chimeSource === ChimeSource.Custom || e.chimeSource === ChimeSource.Recorded) &&
 		typeof e.chimeDataUrl === "string" &&
 		e.chimeDataUrl.length > 0;
-	const youtube =
-		e.chimeSource === ChimeSource.YouTube &&
-		typeof e.chimeDataUrl === "string" &&
-		parseYouTubeUrl(e.chimeDataUrl) !== null;
-	const chime =
-		custom || youtube
-			? {
-					chimeSource: youtube
-						? ChimeSource.YouTube
-						: e.chimeSource === ChimeSource.Recorded
-							? ChimeSource.Recorded
-							: ChimeSource.Custom,
-					chimeName:
-						typeof e.chimeName === "string" && e.chimeName.length > 0
-							? e.chimeName
-							: DEFAULT_CHIME_NAME,
-					chimeDataUrl: e.chimeDataUrl as string,
-				}
-			: defaultChime();
+	const chime = custom
+		? {
+				chimeSource:
+					e.chimeSource === ChimeSource.Recorded ? ChimeSource.Recorded : ChimeSource.Custom,
+				chimeName:
+					typeof e.chimeName === "string" && e.chimeName.length > 0
+						? e.chimeName
+						: DEFAULT_CHIME_NAME,
+				chimeDataUrl: e.chimeDataUrl as string,
+			}
+		: defaultChime();
 	const entry: CalendarEntry = {
 		id: e.id,
 		iso: e.iso,
